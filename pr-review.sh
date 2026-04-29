@@ -79,10 +79,9 @@ show_menu() {
     echo -e "  ${CYAN}4)${RESET} Add a New Rule"
     echo -e "  ${CYAN}5)${RESET} View Past Reports"
     echo -e "  ${CYAN}6)${RESET} Clean Up PR Checkouts"
-    echo -e "  ${CYAN}7)${RESET} Post Report to GitHub PR"
-    echo -e "  ${CYAN}8)${RESET} Exit"
+    echo -e "  ${CYAN}7)${RESET} Exit"
     echo ""
-    printf "  \033[1m→\033[0m Enter choice [1-8]: "
+    printf "  \033[1m→\033[0m Enter choice [1-7]: "
     read -r MENU_CHOICE
 }
 
@@ -193,12 +192,7 @@ review_pr_workflow() {
 
     print_report_summary "$report_path" "$pr_number"
 
-    # Step 8: Optional — post to GitHub
-    if confirm_prompt "Post this report as a comment on PR #${pr_number}?"; then
-        post_report_to_github "$pr_number" "$report_path"
-    fi
-
-    # Step 9: Open report
+    # Step 8: Open report
     if confirm_prompt "Open the report now?"; then
         if command -v xdg-open &>/dev/null; then
             xdg-open "$report_path" &>/dev/null &
@@ -285,75 +279,6 @@ cleanup_checkouts() {
 }
 
 # ---------------------------------------------------------------------------
-# Post report as GitHub PR comment
-# ---------------------------------------------------------------------------
-post_report_to_github() {
-    local pr_number="$1"
-    local report_path="$2"
-
-    if [[ ! -f "$report_path" ]]; then
-        print_error "Report file not found: ${report_path}"
-        return 1
-    fi
-
-    print_step "Posting report to PR #${pr_number}..."
-    start_spinner "Posting comment..."
-    gh pr comment "$pr_number" \
-        --repo "$GITHUB_REPO" \
-        --body-file "$report_path" 2>&1
-    local exit_code=$?
-    stop_spinner
-
-    if [[ $exit_code -eq 0 ]]; then
-        print_success "Report posted to: https://github.com/${GITHUB_REPO}/pull/${pr_number}"
-    else
-        print_error "Failed to post comment. Check your gh auth permissions."
-    fi
-}
-
-# ---------------------------------------------------------------------------
-# Post report (standalone menu option — asks for PR number + report path)
-# ---------------------------------------------------------------------------
-post_report_menu() {
-    print_header "Post Report to GitHub"
-
-    local pr_num
-    pr_num=$(prompt_input "PR number")
-    [[ -z "$pr_num" ]] && return
-
-    if [[ ! -d "$REPORTS_DIR" ]]; then
-        print_error "No reports directory found: ${REPORTS_DIR}"
-        return
-    fi
-
-    # Find matching report
-    local matching_reports=()
-    mapfile -t matching_reports < <(ls -t "${REPORTS_DIR}/pr-${pr_num}-"*.md 2>/dev/null)
-
-    if [[ ${#matching_reports[@]} -eq 0 ]]; then
-        print_warn "No reports found for PR #${pr_num}"
-        local manual_path
-        manual_path=$(prompt_input "Enter full path to report file manually" "")
-        [[ -n "$manual_path" ]] && matching_reports=("$manual_path")
-    fi
-
-    if [[ ${#matching_reports[@]} -gt 1 ]]; then
-        print_info "Multiple reports found:"
-        local i=1
-        for r in "${matching_reports[@]}"; do
-            printf "  ${CYAN}%d)${RESET} %s\n" "$i" "$(basename "$r")"
-            (( i += 1 ))
-        done
-        local choice
-        choice=$(prompt_input "Select report number" "1")
-        local idx=$(( choice - 1 ))
-        post_report_to_github "$pr_num" "${matching_reports[$idx]}"
-    elif [[ ${#matching_reports[@]} -eq 1 ]]; then
-        post_report_to_github "$pr_num" "${matching_reports[0]}"
-    fi
-}
-
-# ---------------------------------------------------------------------------
 # Show help
 # ---------------------------------------------------------------------------
 show_help() {
@@ -422,13 +347,12 @@ main() {
             4) add_rule ;;
             5) view_past_reports ;;
             6) cleanup_checkouts ;;
-            7) post_report_menu ;;
-            8|q|Q|exit|quit)
+            7|q|Q|exit|quit)
                 echo -e "\n  ${DIM}Goodbye!${RESET}\n"
                 exit 0
                 ;;
             *)
-                print_warn "Invalid choice '${MENU_CHOICE}'. Enter a number 1-8."
+                print_warn "Invalid choice '${MENU_CHOICE}'. Enter a number 1-7."
                 ;;
         esac
         echo ""
