@@ -1,0 +1,13 @@
+# Generated outputs — not committed; each user has their own
+checkouts/
+reports/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+.vscode/
+.idea/
