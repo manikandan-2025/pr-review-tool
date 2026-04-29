@@ -13,7 +13,6 @@
 | 📋 **Rule-Based Scanning** | 60+ rules (NAME, COMP, CLEAN, RES, KARMA, TPL, ARCH) auto-checked via grep |
 | 🤖 **Copilot AI Analysis** | Deep narrative analysis via GitHub Copilot CLI |
 | 📄 **Markdown Reports** | Severity-grouped findings with rule IDs, file:line refs, fix guidance |
-| 💬 **PR Comments** | Post reports directly to the GitHub PR thread |
 | ✏️ **Rule Management** | View, edit, or add rules via interactive menu |
 
 ---
@@ -49,17 +48,14 @@ chmod +x pr-review.sh
 
 ### 2. Configure your local paths
 
-Edit `config/settings.conf` with **your** machine's paths:
+Edit `config/settings.conf` — only **`REPO_PATH`** needs to be updated:
 
 ```bash
 # Path to your local clone of dedalus-cis4u/pas-ou
 REPO_PATH="/path/to/your/pas-ou"
-
-# Path to the review instructions file
-INSTRUCTIONS_FILE="/path/to/pr-review.instructions.md"
 ```
 
-> `CHECKOUTS_DIR` and `REPORTS_DIR` default to `checkouts/` and `reports/` inside the tool directory — no changes needed unless you want custom paths.
+> `INSTRUCTIONS_FILE`, `CHECKOUTS_DIR`, and `REPORTS_DIR` are all auto-resolved relative to the tool directory — no changes needed.
 
 ### 3. Clone the pas-ou repo (if you haven't already)
 
@@ -97,8 +93,7 @@ git clone https://github.com/dedalus-cis4u/pas-ou.git /path/to/your/pas-ou
   4) Add a New Rule
   5) View Past Reports
   6) Clean Up PR Checkouts
-  7) Post Report to GitHub PR
-  8) Exit
+  7) Exit
 ```
 
 ---
@@ -117,7 +112,6 @@ git clone https://github.com/dedalus-cis4u/pas-ou.git /path/to/your/pas-ou
 6. **Displays findings** in the terminal by severity (Blocker / Major / Minor)
 7. **Asks for Copilot AI** deeper analysis (optional, ~30s)
 8. **Saves a Markdown report** to `reports/pr-879-review-YYYY-MM-DD.md`
-9. **Offers to post** the report as a GitHub PR comment
 
 ---
 
@@ -165,7 +159,7 @@ Reports are saved as `reports/pr-<N>-review-<date>.md`:
 | Karma/Tests | KARMA-01..11 | Boilerplate specs, missing mocks |
 | Architecture | ARCH-01..02 | Layer violations |
 
-Full rule details: see [pr-review.instructions.md](https://github.com/dedalus-cis4u/pas-ou) in the main repo.
+Full rule details: see [pr-review.instructions.md](pr-review.instructions.md) bundled in this repo.
 
 ---
 
@@ -174,8 +168,9 @@ Full rule details: see [pr-review.instructions.md](https://github.com/dedalus-ci
 ```
 pr-review-tool/
 ├── pr-review.sh              # Main entry point — run this
+├── pr-review.instructions.md # All 60+ review rules (bundled)
 ├── config/
-│   └── settings.conf         # ← Edit REPO_PATH and INSTRUCTIONS_FILE here
+│   └── settings.conf         # ← Edit REPO_PATH here
 ├── lib/
 │   ├── utils.sh              # Colors, logging, prompts
 │   ├── checkout.sh           # Git worktree management
@@ -197,7 +192,7 @@ pr-review-tool/
 | `gh auth status` fails | Run `gh auth login` |
 | `fatal: not a git repository` | Run from `pr-review-tool/` directory |
 | Worktree already exists error | Run option 6 (Clean Up) then retry |
-| Copilot analysis unavailable | Skip and use the generated prompt file in VS Code Copilot Chat |
+| Copilot analysis unavailable | Skip — use the generated prompt file in VS Code Copilot Chat |
 | Wrong merge base / too many files | Ensure `REPO_PATH` has `origin/main` up to date: `git fetch origin` |
 | Missing resource files | Make sure `REPO_PATH` points to the full pas-ou clone |
 
