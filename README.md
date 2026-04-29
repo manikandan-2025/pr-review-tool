@@ -39,7 +39,7 @@ gh copilot --version   # verify Copilot CLI is available
 
 ## Team Setup (One-Time)
 
-### 1. Clone this repo
+### 1. Clone this repo (Ignore if already cloned in your machine)
 
 ```bash
 git clone https://github.com/manikandan-2025/pr-review-tool.git
