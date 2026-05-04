@@ -227,10 +227,17 @@ scan_boolean_naming() {
     for f in "${files[@]}"; do
         [[ "$f" == *.ts && "$f" != *.spec.ts ]] || continue
         # Detects: booleanVarName = false/true; without is/has/can/should prefix
-        grep_file "$worktree" "$f" \
-            '^\s+(public |private |protected )?(readonly )?[a-z][a-zA-Z]+(Mode|Flag|Active|Visible|Enabled|Valid|Required|Mandatory|Loading|Found|Ready)\s*[=:]\s*(false|true|boolean)' \
-            "MINOR" "NAME-02" \
-            "Boolean variable likely missing 'is'/'has'/'can'/'should' prefix (e.g., isLoading, hasError)"
+        # Uses grep -P for negative lookahead to skip already-prefixed variables
+        local abs_file="${worktree}/${f}"
+        [[ -f "$abs_file" ]] || continue
+        while IFS=: read -r lineno match; do
+            local trimmed
+            trimmed=$(echo "$match" | sed 's/^[[:space:]]*//')
+            add_finding "MINOR" "NAME-02" "$f" "$lineno" "$trimmed" \
+                "Boolean variable likely missing 'is'/'has'/'can'/'should' prefix (e.g., isLoading, hasError)"
+        done < <(grep -n -P \
+            '^\s+(public |private |protected )?(readonly )?(?!(is|has|can|should)[A-Z])[a-z][a-zA-Z]+(Mode|Flag|Active|Visible|Enabled|Valid|Required|Mandatory|Loading|Found|Ready)\s*[=:]\s*(false|true|boolean)' \
+            "$abs_file" 2>/dev/null)
     done
 }
 
