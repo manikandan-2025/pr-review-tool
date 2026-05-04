@@ -49,7 +49,7 @@ start_spinner() {
     (
         i=0
         while true; do
-            printf "\r  ${CYAN}%s${RESET}  %s " "${spin[$i]}" "$msg"
+            printf "\r  ${CYAN}%s${RESET}  %s " "${spin[$i]}" "$msg" >&2
             i=$(( (i+1) % 10 ))
             sleep 0.1
         done
@@ -62,7 +62,7 @@ stop_spinner() {
     if [[ -n "$_SPINNER_PID" ]]; then
         kill "$_SPINNER_PID" 2>/dev/null
         _SPINNER_PID=""
-        printf "\r\033[K"
+        printf "\r\033[K" >&2
     fi
 }
 

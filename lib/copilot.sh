@@ -99,27 +99,30 @@ run_copilot_analysis() {
     local prompt="$1"
     local output_file="$2"
 
-    print_step "Running GitHub Copilot AI analysis..."
+    print_step "Running GitHub Copilot AI analysis..." >&2
 
     # Write prompt to a temp file
     local prompt_file
     prompt_file=$(mktemp /tmp/pr-review-prompt-XXXXXX.md)
     echo "$prompt" > "$prompt_file"
 
-    # Try gh copilot explain with the prompt piped in
-    # gh copilot explain reads from stdin
+    # Use gh copilot -p with the prompt passed directly
     local copilot_output
     local exit_code=0
 
     start_spinner "Asking Copilot to review the diff..."
-    copilot_output=$(echo "$prompt" | timeout 120 gh copilot explain - 2>&1) || exit_code=$?
+    # --available-tools (no args) = no tools; --no-ask-user = fully non-interactive
+    # Filter: remove token stats footer and tool-invocation log lines (●, │, └)
+    copilot_output=$(timeout 120 gh copilot -p "$prompt" --available-tools --no-ask-user 2>&1 \
+        | grep -v "^Changes\s*\|^Requests\s*\|^Tokens\s*" \
+        | grep -v "^[[:space:]]*[●│└]") || exit_code=$?
     stop_spinner
 
     rm -f "$prompt_file"
 
     if [[ $exit_code -ne 0 || -z "$copilot_output" ]]; then
-        print_warn "Copilot CLI did not return a response (exit code: ${exit_code})"
-        print_warn "A ready-to-paste prompt has been saved for manual use in VS Code Copilot."
+        print_warn "Copilot CLI did not return a response (exit code: ${exit_code})" >&2
+        print_warn "A ready-to-paste prompt has been saved for manual use in VS Code Copilot." >&2
         save_manual_prompt "$prompt" "$output_file"
         echo "_Copilot CLI analysis not available. Use the prompt file for VS Code Copilot Chat._"
         return 1
@@ -127,7 +130,7 @@ run_copilot_analysis() {
 
     # Save raw Copilot output
     echo "$copilot_output" > "${output_file%.md}-copilot-raw.txt"
-    print_success "Copilot analysis complete"
+    print_success "Copilot analysis complete" >&2
     echo "$copilot_output"
 }
 
@@ -148,7 +151,7 @@ save_manual_prompt() {
 
 ${prompt}
 EOF
-    print_info "Prompt saved to: ${prompt_file}"
+    print_info "Prompt saved to: ${prompt_file}" >&2
     echo "$prompt_file"
 }
 
