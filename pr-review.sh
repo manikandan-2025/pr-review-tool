@@ -141,6 +141,13 @@ review_pr_workflow() {
 
     # Only fetch if we are NOT reusing an existing worktree
     if [[ "$reusing" == "false" ]]; then
+        # Fully clean up any leftover worktree registration and branch before fetching.
+        # This prevents "refusing to fetch into branch checked out at worktree" errors
+        # that occur when a previous run left behind the branch (even without the directory).
+        (cd "$REPO_PATH" && git worktree remove "${worktree_path}" --force 2>/dev/null) || true
+        (cd "$REPO_PATH" && git worktree prune 2>/dev/null) || true
+        (cd "$REPO_PATH" && git branch -D "pr-${pr_number}" 2>/dev/null) || true
+
         fetch_pr "$pr_number" || return 1
         worktree_path=$(create_worktree "$pr_number") || return 1
     fi
