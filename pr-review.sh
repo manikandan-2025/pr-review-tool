@@ -34,8 +34,6 @@ source "${TOOL_DIR}/lib/copilot.sh"
 source "${TOOL_DIR}/lib/report.sh"
 # shellcheck source=lib/instructions.sh
 source "${TOOL_DIR}/lib/instructions.sh"
-# shellcheck source=lib/feature-branch.sh
-source "${TOOL_DIR}/lib/feature-branch.sh"
 
 # Resolve REPO_PATH + GITHUB_REPO from the active repo in repos.conf
 load_active_repo || true
@@ -78,21 +76,16 @@ show_banner() {
 # ---------------------------------------------------------------------------
 show_menu() {
     echo -e "${BOLD}  Active repo: ${CYAN}${ACTIVE_REPO}${RESET}${BOLD}  (${GITHUB_REPO})${RESET}\n"
-    echo -e "  ${BOLD}── PR Review ────────────────────────────${RESET}"
     echo -e "  ${CYAN}1)${RESET} Review a Pull Request"
     echo -e "  ${CYAN}2)${RESET} View Review Rules"
     echo -e "  ${CYAN}3)${RESET} Edit Review Rules"
     echo -e "  ${CYAN}4)${RESET} Add a New Rule"
     echo -e "  ${CYAN}5)${RESET} View Past Reports"
     echo -e "  ${CYAN}6)${RESET} Clean Up PR Checkouts"
-    echo -e "  ${BOLD}── Feature Branch ───────────────────────${RESET}"
     echo -e "  ${CYAN}7)${RESET} Manage Repositories"
-    echo -e "  ${CYAN}8)${RESET} Checkout Feature Branch from ${DEFAULT_BASE_BRANCH}"
-    echo -e "  ${CYAN}9)${RESET} Remove Feature Branch Checkout"
-    echo -e "  ${BOLD}─────────────────────────────────────────${RESET}"
     echo -e "  ${CYAN}0)${RESET} Exit"
     echo ""
-    printf "  \033[1m→\033[0m Enter choice [0-9]: "
+    printf "  \033[1m→\033[0m Enter choice [0-7]: "
     read -r MENU_CHOICE
 }
 
@@ -321,20 +314,16 @@ ${BOLD}OTHER SETTINGS${RESET}
   - ACTIVE_REPO       Alias of the repo to operate on
   - INSTRUCTIONS_FILE Path to pr-review.instructions.md
   - REPORTS_DIR       Where reports are saved
-  - CHECKOUTS_DIR     Where PR and feature worktrees are created
+  - CHECKOUTS_DIR     Where PR worktrees are created
 
 ${BOLD}WHAT IT DOES${RESET}
-  PR Review (options 1-6):
-    1. Fetches the PR branch from GitHub (isolated git worktree)
-    2. Scans changed files against all rules in the instructions file
-    3. Runs GitHub Copilot AI for deeper narrative analysis
-    4. Generates a Markdown report with severity-grouped findings
+  1. Fetches the PR branch from GitHub (isolated git worktree)
+  2. Scans changed files against all rules in the instructions file
+  3. Runs GitHub Copilot AI for deeper narrative analysis
+  4. Generates a Markdown report with severity-grouped findings
 
-  Feature Branch (options 7-9):
-    7. Manage repos  — add / remove / switch active repo
-    8. Checkout      — create a new branch from ${DEFAULT_BASE_BRANCH} in an isolated
-                       worktree and open a shell or editor inside it
-    9. Remove        — clean up feature-branch worktrees
+  Option 7 — Manage Repositories:
+    Add / remove / switch active repo (pas-ou, pas-4u, etc.)
 
 ${BOLD}REQUIREMENTS${RESET}
   - git (2.5+)
@@ -380,14 +369,12 @@ main() {
             5) view_past_reports ;;
             6) cleanup_checkouts ;;
             7) configure_repos_menu ;;
-            8) checkout_feature_branch ;;
-            9) remove_feature_worktree ;;
             0|q|Q|exit|quit)
                 echo -e "\n  ${DIM}Goodbye!${RESET}\n"
                 exit 0
                 ;;
             *)
-                print_warn "Invalid choice '${MENU_CHOICE}'. Enter a number 0-9."
+                print_warn "Invalid choice '${MENU_CHOICE}'. Enter a number 0-7."
                 ;;
         esac
         echo ""
