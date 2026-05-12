@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-#  pr-review.sh — Interactive PR Code Review Tool for dedalus-cis4u/pas-ou
+#  pr-review.sh — Interactive PR Code Review Tool (multi-repo)
 #
 #  Usage:
 #    ./pr-review.sh              → interactive menu
@@ -22,6 +22,8 @@ source "${TOOL_DIR}/config/settings.conf"
 # Load libraries
 # shellcheck source=lib/utils.sh
 source "${TOOL_DIR}/lib/utils.sh"
+# shellcheck source=lib/repo-config.sh
+source "${TOOL_DIR}/lib/repo-config.sh"
 # shellcheck source=lib/checkout.sh
 source "${TOOL_DIR}/lib/checkout.sh"
 # shellcheck source=lib/analyze.sh
@@ -32,6 +34,11 @@ source "${TOOL_DIR}/lib/copilot.sh"
 source "${TOOL_DIR}/lib/report.sh"
 # shellcheck source=lib/instructions.sh
 source "${TOOL_DIR}/lib/instructions.sh"
+# shellcheck source=lib/feature-branch.sh
+source "${TOOL_DIR}/lib/feature-branch.sh"
+
+# Resolve REPO_PATH + GITHUB_REPO from the active repo in repos.conf
+load_active_repo || true
 
 # ---------------------------------------------------------------------------
 # Pre-flight checks
@@ -40,9 +47,9 @@ preflight_checks() {
     require_command git
     require_command gh
 
-    if [[ ! -d "$REPO_PATH" ]]; then
-        print_error "Repository not found at: ${REPO_PATH}"
-        print_info "Update REPO_PATH in: ${TOOL_DIR}/config/settings.conf"
+    if [[ -z "${REPO_PATH:-}" || ! -d "$REPO_PATH" ]]; then
+        print_error "Active repo '${ACTIVE_REPO}' not found at: ${REPO_PATH:-<not set>}"
+        print_info "Use option 7 (Manage Repositories) to configure or switch repos."
         exit 1
     fi
 
@@ -59,12 +66,10 @@ preflight_checks() {
 # ---------------------------------------------------------------------------
 show_banner() {
     echo -e "${BOLD}${CYAN}"
-    cat <<'BANNER'
-  ╔═══════════════════════════════════════════════════════════╗
-  ║          PAS-OU  ·  PR Code Review Tool                   ║
-  ║          dedalus-cis4u/pas-ou                             ║
-  ╚═══════════════════════════════════════════════════════════╝
-BANNER
+    echo "  ╔═══════════════════════════════════════════════════════════╗"
+    echo "  ║          PAS  ·  PR Code Review Tool                      ║"
+    printf "  ║          %-49s ║\n" "${GITHUB_REPO}"
+    echo "  ╚═══════════════════════════════════════════════════════════╝"
     echo -e "${RESET}"
 }
 
@@ -72,16 +77,22 @@ BANNER
 # Main menu
 # ---------------------------------------------------------------------------
 show_menu() {
-    echo -e "${BOLD}  What would you like to do?${RESET}\n"
+    echo -e "${BOLD}  Active repo: ${CYAN}${ACTIVE_REPO}${RESET}${BOLD}  (${GITHUB_REPO})${RESET}\n"
+    echo -e "  ${BOLD}── PR Review ────────────────────────────${RESET}"
     echo -e "  ${CYAN}1)${RESET} Review a Pull Request"
     echo -e "  ${CYAN}2)${RESET} View Review Rules"
     echo -e "  ${CYAN}3)${RESET} Edit Review Rules"
     echo -e "  ${CYAN}4)${RESET} Add a New Rule"
     echo -e "  ${CYAN}5)${RESET} View Past Reports"
     echo -e "  ${CYAN}6)${RESET} Clean Up PR Checkouts"
-    echo -e "  ${CYAN}7)${RESET} Exit"
+    echo -e "  ${BOLD}── Feature Branch ───────────────────────${RESET}"
+    echo -e "  ${CYAN}7)${RESET} Manage Repositories"
+    echo -e "  ${CYAN}8)${RESET} Checkout Feature Branch from ${DEFAULT_BASE_BRANCH}"
+    echo -e "  ${CYAN}9)${RESET} Remove Feature Branch Checkout"
+    echo -e "  ${BOLD}─────────────────────────────────────────${RESET}"
+    echo -e "  ${CYAN}0)${RESET} Exit"
     echo ""
-    printf "  \033[1m→\033[0m Enter choice [1-7]: "
+    printf "  \033[1m→\033[0m Enter choice [0-9]: "
     read -r MENU_CHOICE
 }
 
@@ -290,26 +301,40 @@ cleanup_checkouts() {
 # ---------------------------------------------------------------------------
 show_help() {
     cat <<HELP
-${BOLD}PAS-OU PR Review Tool${RESET}
+${BOLD}PAS PR Review Tool${RESET}
 
 ${BOLD}USAGE${RESET}
   ./pr-review.sh              Start interactive menu
   ./pr-review.sh --pr <N>     Directly review PR number N
   ./pr-review.sh --help       Show this help
 
-${BOLD}CONFIGURATION${RESET}
+${BOLD}MULTI-REPO CONFIGURATION${RESET}
+  Repos registry : ${TOOL_DIR}/config/repos.conf
+    Format       : alias|github_owner/repo|/local/clone/path
+  Active repo    : set via ACTIVE_REPO in config/settings.conf
+                   or interactively through menu option 7.
+
+  Currently active: ${ACTIVE_REPO}  (${GITHUB_REPO})
+
+${BOLD}OTHER SETTINGS${RESET}
   Edit: ${TOOL_DIR}/config/settings.conf
-  - REPO_PATH         Path to your local pas-ou clone
+  - ACTIVE_REPO       Alias of the repo to operate on
   - INSTRUCTIONS_FILE Path to pr-review.instructions.md
   - REPORTS_DIR       Where reports are saved
-  - CHECKOUTS_DIR     Where PR worktrees are created
+  - CHECKOUTS_DIR     Where PR and feature worktrees are created
 
 ${BOLD}WHAT IT DOES${RESET}
-  1. Fetches the PR branch from GitHub (isolated git worktree)
-  2. Scans changed files against all rules in the instructions file
-  3. Runs GitHub Copilot AI for deeper narrative analysis
-  4. Generates a Markdown report with severity-grouped findings
-  5. Optionally posts the report as a PR comment
+  PR Review (options 1-6):
+    1. Fetches the PR branch from GitHub (isolated git worktree)
+    2. Scans changed files against all rules in the instructions file
+    3. Runs GitHub Copilot AI for deeper narrative analysis
+    4. Generates a Markdown report with severity-grouped findings
+
+  Feature Branch (options 7-9):
+    7. Manage repos  — add / remove / switch active repo
+    8. Checkout      — create a new branch from ${DEFAULT_BASE_BRANCH} in an isolated
+                       worktree and open a shell or editor inside it
+    9. Remove        — clean up feature-branch worktrees
 
 ${BOLD}REQUIREMENTS${RESET}
   - git (2.5+)
@@ -354,12 +379,15 @@ main() {
             4) add_rule ;;
             5) view_past_reports ;;
             6) cleanup_checkouts ;;
-            7|q|Q|exit|quit)
+            7) configure_repos_menu ;;
+            8) checkout_feature_branch ;;
+            9) remove_feature_worktree ;;
+            0|q|Q|exit|quit)
                 echo -e "\n  ${DIM}Goodbye!${RESET}\n"
                 exit 0
                 ;;
             *)
-                print_warn "Invalid choice '${MENU_CHOICE}'. Enter a number 1-7."
+                print_warn "Invalid choice '${MENU_CHOICE}'. Enter a number 0-9."
                 ;;
         esac
         echo ""
