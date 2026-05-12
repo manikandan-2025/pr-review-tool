@@ -97,17 +97,31 @@ switch_repo() {
     list_repos
 
     local choice
-    choice=$(prompt_input "Enter number to switch to (Enter to cancel)" "")
+    choice=$(prompt_input "Enter number or alias to switch to (Enter to cancel)" "")
     [[ -z "$choice" ]] && { print_info "Cancelled."; return 0; }
 
-    if [[ ! "$choice" =~ ^[0-9]+$ ]]; then
-        print_error "Invalid input."; return 1
-    fi
-
     _load_repos_file
-    local idx=$(( choice - 1 ))
-    if [[ $idx -lt 0 || $idx -ge ${#_REPO_ALIASES[@]} ]]; then
-        print_error "Selection out of range."; return 1
+    local idx=-1
+
+    if [[ "$choice" =~ ^[0-9]+$ ]]; then
+        # Numeric selection
+        idx=$(( choice - 1 ))
+        if [[ $idx -lt 0 || $idx -ge ${#_REPO_ALIASES[@]} ]]; then
+            print_error "Selection out of range."; return 1
+        fi
+    else
+        # Alias name selection
+        local i
+        for i in "${!_REPO_ALIASES[@]}"; do
+            if [[ "${_REPO_ALIASES[$i]}" == "$choice" ]]; then
+                idx=$i
+                break
+            fi
+        done
+        if [[ $idx -eq -1 ]]; then
+            print_error "Unknown alias '${choice}'. Use a number or an exact alias from the list above."
+            return 1
+        fi
     fi
 
     local new_alias="${_REPO_ALIASES[$idx]}"
