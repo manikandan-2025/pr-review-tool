@@ -93,11 +93,12 @@ confirm_prompt() {
 
 prompt_input() {
     # prompt_input "Label" [default] → echoes trimmed input
+    # printf goes to stderr so the prompt is visible even inside $() captures
     local label="$1"
     local default="${2:-}"
     local hint=""
     [[ -n "$default" ]] && hint=" (default: ${default})"
-    printf "  \033[1m→\033[0m %s%s: " "$label" "$hint"
+    printf "  \033[1m→\033[0m %s%s: " "$label" "$hint" >&2
     read -r value
     value="${value:-$default}"
     echo "$value"
