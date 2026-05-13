@@ -173,7 +173,7 @@ add_repo() {
     repo_alias=$(prompt_input "Short alias (e.g. pas-4u)" "")
     if [[ -z "$repo_alias" ]]; then print_info "Cancelled."; return 0; fi
     if ! _is_valid_repo_alias "$repo_alias"; then
-        print_error "Invalid alias '${repo_alias}'. Use only letters, numbers, dot (.), underscore (_) and hyphen (-)."
+        print_error "Invalid alias '${repo_alias}' (allowed: letters, numbers, dot, underscore, hyphen)."
         return 1
     fi
 
