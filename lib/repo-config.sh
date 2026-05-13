@@ -36,7 +36,7 @@ _load_repos_file() {
 
         IFS='|' read -r alias gh_repo local_path extra <<< "$line"
         if [[ -z "$alias" || -z "$gh_repo" || -z "$local_path" || -n "$extra" ]]; then
-            print_warn "Skipping invalid repos.conf entry at line ${line_no}: '${line}' (expected alias|github-owner/repo-name|/abs/path)"
+            print_warn "Skipping invalid repos.conf entry at line ${line_no}: '${line}' (expected exactly 3 fields: alias|github-owner/repo-name|/abs/path)"
             continue
         fi
         if ! _is_valid_repo_alias "$alias"; then
