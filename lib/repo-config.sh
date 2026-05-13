@@ -150,16 +150,16 @@ switch_repo() {
 add_repo() {
     print_header "Add Repository"
 
-    local alias gh_repo local_path
+    local repo_alias gh_repo local_path
 
-    alias=$(prompt_input "Short alias (e.g. pas-4u)" "")
-    if [[ -z "$alias" ]]; then print_info "Cancelled."; return 0; fi
+    repo_alias=$(prompt_input "Short alias (e.g. pas-4u)" "")
+    if [[ -z "$repo_alias" ]]; then print_info "Cancelled."; return 0; fi
 
     # Check for duplicate alias
     _load_repos_file
     local a; for a in "${_REPO_ALIASES[@]}"; do
-        if [[ "$a" == "$alias" ]]; then
-            print_error "Alias '${alias}' already exists. Remove it first or choose a different name."
+        if [[ "$a" == "$repo_alias" ]]; then
+            print_error "Alias '${repo_alias}' already exists. Remove it first or choose a different name."
             return 1
         fi
     done
@@ -175,16 +175,16 @@ add_repo() {
         confirm_prompt "Add it anyway?" || return 0
     fi
 
-    echo "${alias}|${gh_repo}|${local_path}" >> "$REPOS_FILE"
-    print_success "Repo '${alias}' added to repos.conf"
+    echo "${repo_alias}|${gh_repo}|${local_path}" >> "$REPOS_FILE"
+    print_success "Repo '${repo_alias}' added to repos.conf"
 
-    if confirm_prompt "Switch to '${alias}' now?"; then
+    if confirm_prompt "Switch to '${repo_alias}' now?"; then
         local conf="${TOOL_DIR}/config/settings.conf"
-        sed -i "s|^ACTIVE_REPO=.*|ACTIVE_REPO=\"${alias}\"|" "$conf"
-        ACTIVE_REPO="$alias"
+        sed -i "s|^ACTIVE_REPO=.*|ACTIVE_REPO=\"${repo_alias}\"|" "$conf"
+        ACTIVE_REPO="$repo_alias"
         REPO_PATH="$local_path"
         GITHUB_REPO="$gh_repo"
-        print_success "Active repo switched to: ${alias}"
+        print_success "Active repo switched to: ${repo_alias}"
     fi
 }
 
