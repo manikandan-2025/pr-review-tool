@@ -12,6 +12,10 @@
 # Internal: read repos.conf → populate parallel arrays
 #   _REPO_ALIASES[]  _REPO_GH[]  _REPO_PATHS[]
 # ---------------------------------------------------------------------------
+_is_valid_repo_alias() {
+    [[ "$1" =~ ^[A-Za-z0-9._-]+$ ]]
+}
+
 _load_repos_file() {
     _REPO_ALIASES=()
     _REPO_GH=()
@@ -22,7 +26,7 @@ _load_repos_file() {
         return 1
     fi
 
-    local line line_no=0 alias gh_repo local_path
+    local line line_no=0 alias gh_repo local_path extra
     while IFS= read -r line || [[ -n "$line" ]]; do
         ((line_no++))
 
@@ -30,9 +34,13 @@ _load_repos_file() {
         [[ "$line" =~ ^[[:space:]]*$ ]] && continue
         [[ "$line" =~ ^[[:space:]]*# ]] && continue
 
-        IFS='|' read -r alias gh_repo local_path <<< "$line"
-        if [[ -z "$alias" || -z "$gh_repo" || -z "$local_path" ]]; then
+        IFS='|' read -r alias gh_repo local_path extra <<< "$line"
+        if [[ -z "$alias" || -z "$gh_repo" || -z "$local_path" || -n "$extra" ]]; then
             print_warn "Skipping invalid repos.conf entry at line ${line_no}: '${line}' (expected alias|github-owner/repo-name|/abs/path)"
+            continue
+        fi
+        if ! _is_valid_repo_alias "$alias"; then
+            print_warn "Skipping invalid alias at line ${line_no}: '${alias}' (allowed: letters, numbers, dot, underscore, hyphen)"
             continue
         fi
 
@@ -164,6 +172,10 @@ add_repo() {
 
     repo_alias=$(prompt_input "Short alias (e.g. pas-4u)" "")
     if [[ -z "$repo_alias" ]]; then print_info "Cancelled."; return 0; fi
+    if ! _is_valid_repo_alias "$repo_alias"; then
+        print_error "Invalid alias '${repo_alias}'. Use only letters, numbers, dot (.), underscore (_) and hyphen (-)."
+        return 1
+    fi
 
     # Check for duplicate alias
     _load_repos_file
