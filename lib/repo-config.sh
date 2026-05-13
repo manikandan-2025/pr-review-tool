@@ -22,10 +22,15 @@ _load_repos_file() {
         return 1
     fi
 
-    while IFS='|' read -r alias gh_repo local_path; do
+    local line alias gh_repo local_path
+    while IFS= read -r line || [[ -n "$line" ]]; do
         # Skip comments and blank lines
-        [[ "$alias" =~ ^#  ]] && continue
-        [[ -z "$alias"     ]] && continue
+        [[ "$line" =~ ^[[:space:]]*$ ]] && continue
+        [[ "$line" =~ ^[[:space:]]*# ]] && continue
+
+        IFS='|' read -r alias gh_repo local_path <<< "$line"
+        [[ -z "$alias" || -z "$gh_repo" || -z "$local_path" ]] && continue
+
         _REPO_ALIASES+=("$alias")
         _REPO_GH+=("$gh_repo")
         _REPO_PATHS+=("$local_path")
