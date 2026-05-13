@@ -22,14 +22,19 @@ _load_repos_file() {
         return 1
     fi
 
-    local line alias gh_repo local_path
+    local line line_no=0 alias gh_repo local_path
     while IFS= read -r line || [[ -n "$line" ]]; do
+        ((line_no++))
+
         # Skip comments and blank lines
         [[ "$line" =~ ^[[:space:]]*$ ]] && continue
         [[ "$line" =~ ^[[:space:]]*# ]] && continue
 
         IFS='|' read -r alias gh_repo local_path <<< "$line"
-        [[ -z "$alias" || -z "$gh_repo" || -z "$local_path" ]] && continue
+        if [[ -z "$alias" || -z "$gh_repo" || -z "$local_path" ]]; then
+            print_warn "Skipping invalid repos.conf entry at line ${line_no}: expected alias|owner/repo|/abs/path"
+            continue
+        fi
 
         _REPO_ALIASES+=("$alias")
         _REPO_GH+=("$gh_repo")
