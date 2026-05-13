@@ -48,7 +48,7 @@ preflight_checks() {
     if [[ -z "${REPO_PATH:-}" || ! -d "$REPO_PATH" ]]; then
         print_error "Active repo '${ACTIVE_REPO}' not found at: ${REPO_PATH:-<not set>}"
         print_info "Use option 7 (Manage Repositories) to configure or switch repos."
-        exit 1
+        print_info "Continuing so you can access the menu and update the active repository."
     fi
 
     if ! gh auth status &>/dev/null; then
