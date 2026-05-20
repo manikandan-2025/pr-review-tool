@@ -16,13 +16,28 @@ _is_valid_repo_alias() {
     [[ "$1" =~ ^[A-Za-z0-9._-]+$ ]]
 }
 
+# Expand ~ or $HOME at the start of a path
+_expand_path() {
+    local p="$1"
+    # Replace leading ~/ or bare ~ with $HOME
+    echo "${p/#\~/$HOME}"
+}
+
 _load_repos_file() {
     _REPO_ALIASES=()
     _REPO_GH=()
     _REPO_PATHS=()
 
     if [[ ! -f "$REPOS_FILE" ]]; then
-        print_warn "repos.conf not found at: ${REPOS_FILE}"
+        # Auto-create from example if it exists
+        local example="${REPOS_FILE}.example"
+        if [[ -f "$example" ]]; then
+            cp "$example" "$REPOS_FILE"
+            print_info "Created config/repos.conf from repos.conf.example."
+            print_info "Edit it to add your local clone paths, or use option 7 → Manage Repositories."
+        else
+            print_warn "repos.conf not found at: ${REPOS_FILE}"
+        fi
         return 1
     fi
 
@@ -46,7 +61,7 @@ _load_repos_file() {
 
         _REPO_ALIASES+=("$alias")
         _REPO_GH+=("$gh_repo")
-        _REPO_PATHS+=("$local_path")
+        _REPO_PATHS+=("$(_expand_path "$local_path")")
     done < "$REPOS_FILE"
 }
 
@@ -198,11 +213,13 @@ add_repo() {
     gh_repo=$(prompt_input "GitHub repo (owner/repo)" "")
     if [[ -z "$gh_repo" ]]; then print_info "Cancelled."; return 0; fi
 
-    local_path=$(prompt_input "Absolute local clone path" "")
+    local_path=$(prompt_input "Absolute local clone path (~ supported, e.g. ~/projects/pas-ou)" "")
     if [[ -z "$local_path" ]]; then print_info "Cancelled."; return 0; fi
 
-    if [[ ! -d "$local_path" ]]; then
-        print_warn "Directory does not exist: ${local_path}"
+    local expanded_path
+    expanded_path=$(_expand_path "$local_path")
+    if [[ ! -d "$expanded_path" ]]; then
+        print_warn "Directory does not exist: ${expanded_path}"
         confirm_prompt "Add it anyway?" || return 0
     fi
 
@@ -213,7 +230,7 @@ add_repo() {
         local conf="${TOOL_DIR}/config/settings.conf"
         sed -i "s|^ACTIVE_REPO=.*|ACTIVE_REPO=\"${repo_alias}\"|" "$conf"
         ACTIVE_REPO="$repo_alias"
-        REPO_PATH="$local_path"
+        REPO_PATH="$expanded_path"
         GITHUB_REPO="$gh_repo"
         print_success "Active repo switched to: ${repo_alias}"
     fi
@@ -299,15 +316,17 @@ edit_repo_path() {
 
     print_info "Current path for '${alias_to_edit}': ${old_path}"
     local new_path
-    new_path=$(prompt_input "New absolute local clone path" "$old_path")
+    new_path=$(prompt_input "New local clone path (~ supported, e.g. ~/projects/pas-ou)" "$old_path")
     [[ -z "$new_path" ]] && { print_info "Cancelled."; return 0; }
 
-    if [[ ! -d "$new_path" ]]; then
-        print_warn "Directory does not exist: ${new_path}"
+    local expanded_new
+    expanded_new=$(_expand_path "$new_path")
+    if [[ ! -d "$expanded_new" ]]; then
+        print_warn "Directory does not exist: ${expanded_new}"
         confirm_prompt "Save it anyway?" || return 0
     fi
 
-    # Use python3 for reliable in-place line replacement
+    # Use python3 for reliable in-place line replacement (store as-entered, ~ preserved)
     python3 - "$REPOS_FILE" "$alias_to_edit" "$gh" "$new_path" <<'PY'
 import sys
 rfile, alias, gh, new_path = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
@@ -325,11 +344,11 @@ with open(rfile, 'w') as f:
     f.writelines(out)
 PY
 
-    print_success "Path updated for '${alias_to_edit}': ${new_path}"
+    print_success "Path updated for '${alias_to_edit}': ${expanded_new}"
 
     # Refresh in-memory state if this was the active repo
     if [[ "$alias_to_edit" == "$ACTIVE_REPO" ]]; then
-        REPO_PATH="$new_path"
+        REPO_PATH="$expanded_new"
         print_info "Active repo path refreshed."
     fi
 }

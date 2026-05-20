@@ -1,0 +1,23 @@
+# =============================================================================
+#  repos.conf — Repository Registry  (PER-USER, NOT committed to git)
+#
+#  Copy this file to repos.conf and fill in YOUR local clone paths:
+#    cp config/repos.conf.example config/repos.conf
+#
+#  Each non-comment line defines one repository the tool can operate on.
+#  Format: alias|github_owner/repo|local_clone_path
+#
+#  - alias       : short name used to select this repo (A-Z, a-z, 0-9, . _ -)
+#  - github_repo : owner/repo on GitHub (used by gh CLI)
+#  - local_path  : absolute path OR ~/relative path to your local git clone
+#                  e.g.  ~/projects/pas-ou   or   /home/yourname/projects/pas-ou
+#
+#  Paths support ~ expansion (e.g. ~/projects/pas-ou).
+#
+#  You can also manage repos interactively:
+#    ./pr-review.sh  →  option 7 → Manage Repositories
+# =============================================================================
+
+# Replace the paths below with your own local clone locations:
+# pas-ou|dedalus-cis4u/pas-ou|~/projects/pas-ou
+# pas-4u|dedalus-cis4u/pas-4u-ci|~/projects/pas-4u-ci
