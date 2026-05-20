@@ -182,10 +182,34 @@ base_url   = sys.argv[2]
 ac_field   = sys.argv[3] if len(sys.argv) > 3 and sys.argv[3] else ''
 tmpjson    = sys.argv[4]
 
+def wiki_to_markdown(text):
+    """Convert Jira wiki markup (API v2) to readable markdown."""
+    lines = text.split('\n')
+    out = []
+    for line in lines:
+        # Headings: h1. h2. h3. h4.
+        line = re.sub(r'^h([1-4])\.\s*', lambda m: '#' * int(m.group(1)) + ' ', line)
+        # Nested bullets (*** ** * — handle leading spaces from Jira)
+        line = re.sub(r'^\s*\*{3}\s+', '      - ', line)
+        line = re.sub(r'^\s*\*{2}\s+', '    - ', line)
+        line = re.sub(r'^\s*\*\s+', '  - ', line)
+        # Ordered list
+        line = re.sub(r'^#{1}\s+', '1. ', line)
+        # Bold: *text*
+        line = re.sub(r'\*([^*\n]+)\*', r'**\1**', line)
+        # Italic: _text_
+        line = re.sub(r'_([^_\n]+)_', r'_\1_', line)
+        # Links: [text|url] or [url]
+        line = re.sub(r'\[([^\]|]+)\|([^\]]+)\]', r'[\1](\2)', line)
+        line = re.sub(r'\[([^\]]+)\]', r'\1', line)
+        out.append(line)
+    return '\n'.join(out)
+
 def adf_to_text(node, depth=0):
-    # API v2 returns description as a plain string; API v3 returns ADF (dict)
+    # API v2 returns description as Jira wiki markup (plain string)
+    # API v3 returns ADF (dict with 'content' key)
     if isinstance(node, str):
-        return node
+        return wiki_to_markdown(node)
     if not isinstance(node, dict):
         return ''
     ntype = node.get('type', '')
@@ -240,6 +264,7 @@ lines.append("")
 
 # --- Description ---
 desc_raw = fields.get('description')
+desc = ''
 if desc_raw:
     desc = clean(adf_to_text(desc_raw))
     if desc:
@@ -258,13 +283,13 @@ for fid in [ac_field, 'customfield_10028', 'customfield_10016', 'customfield_100
     # Could be string, number, or ADF object
     if isinstance(val, dict) and 'content' in val:
         text = clean(adf_to_text(val))
-        if text and text not in (clean(adf_to_text(desc_raw)) if desc_raw else ''):
+        if text and text not in desc:
             lines.append("**Acceptance Criteria:**")
             lines.append(truncate(text))
             lines.append("")
             break
     elif isinstance(val, str) and val.strip():
-        if val.strip() not in (clean(adf_to_text(desc_raw)) if desc_raw else ''):
+        if val.strip() not in desc:
             lines.append("**Acceptance Criteria:**")
             lines.append(truncate(val.strip()))
             lines.append("")
