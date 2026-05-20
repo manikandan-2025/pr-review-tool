@@ -94,17 +94,26 @@ list_repos() {
     printf "  ${BOLD}%-4s  %-12s  %-35s  %s${RESET}\n" "#" "Alias" "GitHub repo" "Local path"
     print_rule
     local i
+    local any_missing=0
     for i in "${!_REPO_ALIASES[@]}"; do
         local marker="  "
         [[ "${_REPO_ALIASES[$i]}" == "$ACTIVE_REPO" ]] && marker="${GREEN}▶${RESET} "
         local path_display="${_REPO_PATHS[$i]}"
         local exists_mark=""
-        [[ ! -d "${_REPO_PATHS[$i]}" ]] && exists_mark=" ${RED}(path not found)${RESET}"
+        if [[ ! -d "${_REPO_PATHS[$i]}" ]]; then
+            exists_mark=" ${YELLOW}⚠ path not found${RESET}"
+            any_missing=1
+        fi
         printf "  %b%-2d)  %-12s  %-35s  %s%b\n" \
             "$marker" "$(( i + 1 ))" "${_REPO_ALIASES[$i]}" "${_REPO_GH[$i]}" \
             "$path_display" "$exists_mark"
     done
     echo ""
+    if [[ $any_missing -eq 1 ]]; then
+        print_info "One or more local paths don't exist on this machine."
+        print_info "Use option ${BOLD}4) Update local path${RESET}${CYAN} to set the correct path for your machine."
+        echo ""
+    fi
 }
 
 # ---------------------------------------------------------------------------
@@ -262,8 +271,70 @@ remove_repo() {
 }
 
 # ---------------------------------------------------------------------------
-# configure_repos_menu — sub-menu for full repo management
+# edit_repo_path — update just the local clone path for an existing repo entry
 # ---------------------------------------------------------------------------
+edit_repo_path() {
+    print_header "Update Local Path"
+    list_repos
+
+    _load_repos_file
+    if [[ ${#_REPO_ALIASES[@]} -eq 0 ]]; then return; fi
+
+    local choice
+    choice=$(prompt_input "Enter number to edit (Enter to cancel)" "")
+    [[ -z "$choice" ]] && { print_info "Cancelled."; return 0; }
+
+    if [[ ! "$choice" =~ ^[0-9]+$ ]]; then
+        print_error "Invalid input."; return 1
+    fi
+
+    local idx=$(( choice - 1 ))
+    if [[ $idx -lt 0 || $idx -ge ${#_REPO_ALIASES[@]} ]]; then
+        print_error "Selection out of range."; return 1
+    fi
+
+    local alias_to_edit="${_REPO_ALIASES[$idx]}"
+    local gh="${_REPO_GH[$idx]}"
+    local old_path="${_REPO_PATHS[$idx]}"
+
+    print_info "Current path for '${alias_to_edit}': ${old_path}"
+    local new_path
+    new_path=$(prompt_input "New absolute local clone path" "$old_path")
+    [[ -z "$new_path" ]] && { print_info "Cancelled."; return 0; }
+
+    if [[ ! -d "$new_path" ]]; then
+        print_warn "Directory does not exist: ${new_path}"
+        confirm_prompt "Save it anyway?" || return 0
+    fi
+
+    # Use python3 for reliable in-place line replacement
+    python3 - "$REPOS_FILE" "$alias_to_edit" "$gh" "$new_path" <<'PY'
+import sys
+rfile, alias, gh, new_path = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+with open(rfile) as f:
+    lines = f.readlines()
+out = []
+for line in lines:
+    stripped = line.rstrip('\n')
+    parts = stripped.split('|')
+    if len(parts) == 3 and parts[0] == alias and parts[1] == gh:
+        out.append(f"{alias}|{gh}|{new_path}\n")
+    else:
+        out.append(line)
+with open(rfile, 'w') as f:
+    f.writelines(out)
+PY
+
+    print_success "Path updated for '${alias_to_edit}': ${new_path}"
+
+    # Refresh in-memory state if this was the active repo
+    if [[ "$alias_to_edit" == "$ACTIVE_REPO" ]]; then
+        REPO_PATH="$new_path"
+        print_info "Active repo path refreshed."
+    fi
+}
+
+
 configure_repos_menu() {
     while true; do
         print_header "Manage Repositories  [active: ${BOLD}${ACTIVE_REPO}${RESET}${CYAN}]"
@@ -272,16 +343,18 @@ configure_repos_menu() {
         echo -e "  ${CYAN}1)${RESET} Switch active repo"
         echo -e "  ${CYAN}2)${RESET} Add a repo"
         echo -e "  ${CYAN}3)${RESET} Remove a repo"
-        echo -e "  ${CYAN}4)${RESET} Back to main menu"
+        echo -e "  ${CYAN}4)${RESET} Update local path  ${YELLOW}(use this if your local clone is in a different location)${RESET}"
+        echo -e "  ${CYAN}5)${RESET} Back to main menu"
         echo ""
-        printf "  ${BOLD}→${RESET} Enter choice [1-4]: "
+        printf "  ${BOLD}→${RESET} Enter choice [1-5]: "
         read -r repo_choice
 
         case "$repo_choice" in
             1) switch_repo ;;
             2) add_repo ;;
             3) remove_repo ;;
-            4|q|Q|"") return 0 ;;
+            4) edit_repo_path ;;
+            5|q|Q|"") return 0 ;;
             *) print_warn "Invalid choice." ;;
         esac
         echo ""
