@@ -6,12 +6,47 @@
 #           acceptance criteria (custom field or parsed from description),
 #           and attachment manifest.
 #
-#  Configuration (set in config/settings.conf or environment):
-#    JIRA_BASE_URL      e.g. https://yourcompany.atlassian.net
-#    JIRA_USER_EMAIL    Atlassian account email
-#    JIRA_TOKEN         Atlassian API token (https://id.atlassian.com/manage-profile/security/api-tokens)
-#    JIRA_AC_FIELD      Custom field ID for Acceptance Criteria (optional, e.g. customfield_10016)
+#  Supports two authentication modes:
+#    cloud  — Atlassian Cloud: email + API token (Basic Auth)
+#             API token: https://id.atlassian.com/manage-profile/security/api-tokens
+#    pat    — Jira Data Center / Server: Personal Access Token (Bearer Auth)
+#             PAT:       Jira → Profile → Personal Access Tokens
+#
+#  Configuration (set in config/settings.conf or via menu option 8):
+#    JIRA_BASE_URL      e.g. https://yourcompany.atlassian.net  (Cloud)
+#                       e.g. https://jira.yourcompany.com       (Server/DC)
+#    JIRA_AUTH_TYPE     cloud | pat  (default: cloud)
+#    JIRA_USER_EMAIL    Atlassian account email        (cloud mode only)
+#    JIRA_TOKEN         Atlassian API token            (cloud mode only)
+#    JIRA_PAT           Personal Access Token          (pat mode only)
+#    JIRA_API_VERSION   2 | 3  (default: 3 for cloud, 2 for pat/DC)
+#    JIRA_AC_FIELD      Custom field ID for Acceptance Criteria (optional)
 # =============================================================================
+
+# ---------------------------------------------------------------------------
+# Internal: Return the curl auth flags for the current JIRA_AUTH_TYPE
+# Usage: curl $(_jira_curl_auth) ...
+# ---------------------------------------------------------------------------
+_jira_curl_auth() {
+    if [[ "${JIRA_AUTH_TYPE:-cloud}" == "pat" ]]; then
+        echo "-H" "Authorization: Bearer ${JIRA_PAT}"
+    else
+        echo "-u" "${JIRA_USER_EMAIL}:${JIRA_TOKEN}"
+    fi
+}
+
+# ---------------------------------------------------------------------------
+# Internal: Return the configured (or default) Jira REST API version
+# ---------------------------------------------------------------------------
+_jira_api_version() {
+    if [[ -n "${JIRA_API_VERSION:-}" ]]; then
+        echo "$JIRA_API_VERSION"
+    elif [[ "${JIRA_AUTH_TYPE:-cloud}" == "pat" ]]; then
+        echo "2"   # Jira Data Center / Server default
+    else
+        echo "3"   # Atlassian Cloud default
+    fi
+}
 
 # ---------------------------------------------------------------------------
 # Internal: Persist a config value to settings.conf
@@ -30,69 +65,130 @@ _jira_save_setting() {
 
 # ---------------------------------------------------------------------------
 # Interactive first-time setup wizard for Jira credentials
+# Supports both Atlassian Cloud (email + API token) and
+# Jira Data Center / Server (Personal Access Token)
 # ---------------------------------------------------------------------------
 jira_setup_wizard() {
     print_header "Jira Integration Setup"
     print_info "Configure your Jira connection so the review tool can fetch story/defect details."
     echo ""
-    print_info "You need an Atlassian API token:"
-    print_info "  → https://id.atlassian.com/manage-profile/security/api-tokens"
+
+    # ── Step 1: Auth type ────────────────────────────────────────────────────
+    echo -e "  Authentication mode:"
+    echo -e "  ${CYAN}1)${RESET} Cloud   — Atlassian Cloud  (email + API token)"
+    echo -e "  ${CYAN}2)${RESET} PAT     — Jira Data Center / Server  (Personal Access Token)"
     echo ""
+    printf "  \033[1m→\033[0m Select mode [1/2] (default: 1): "
+    read -r auth_choice
+    auth_choice="${auth_choice:-1}"
 
-    local base_url email token ac_field
+    local auth_type base_url
+    case "$auth_choice" in
+        2) auth_type="pat" ;;
+        *) auth_type="cloud" ;;
+    esac
 
-    base_url=$(prompt_input "Jira base URL (e.g. https://yourcompany.atlassian.net)")
+    # ── Step 2: Base URL ─────────────────────────────────────────────────────
+    if [[ "$auth_type" == "cloud" ]]; then
+        base_url=$(prompt_input "Jira Cloud URL (e.g. https://yourcompany.atlassian.net)")
+    else
+        base_url=$(prompt_input "Jira Server/DC URL (e.g. https://jira.yourcompany.com)")
+    fi
+
     if [[ -z "$base_url" ]]; then
         print_warn "Setup cancelled — no URL provided."
         return 1
     fi
-    # Strip trailing slash
     base_url="${base_url%/}"
 
-    email=$(prompt_input "Atlassian account email")
-    if [[ -z "$email" ]]; then
-        print_warn "Setup cancelled — no email provided."
-        return 1
+    # ── Step 3: Credentials ──────────────────────────────────────────────────
+    local email="" token="" pat=""
+
+    if [[ "$auth_type" == "cloud" ]]; then
+        print_info "Generate an API token at: https://id.atlassian.com/manage-profile/security/api-tokens"
+        echo ""
+        email=$(prompt_input "Atlassian account email")
+        if [[ -z "$email" ]]; then
+            print_warn "Setup cancelled — no email provided."
+            return 1
+        fi
+        printf "  \033[1m→\033[0m API token (input hidden): " >&2
+        read -rs token
+        echo "" >&2
+        if [[ -z "$token" ]]; then
+            print_warn "Setup cancelled — no token provided."
+            return 1
+        fi
+    else
+        print_info "Generate a PAT at: ${base_url}/secure/ViewProfile.jspa → Personal Access Tokens"
+        echo ""
+        printf "  \033[1m→\033[0m Personal Access Token (input hidden): " >&2
+        read -rs pat
+        echo "" >&2
+        if [[ -z "$pat" ]]; then
+            print_warn "Setup cancelled — no PAT provided."
+            return 1
+        fi
     fi
 
-    printf "  \033[1m→\033[0m API token (input hidden): " >&2
-    read -rs token
-    echo "" >&2
-    if [[ -z "$token" ]]; then
-        print_warn "Setup cancelled — no token provided."
-        return 1
-    fi
-
+    # ── Step 4: Optional settings ────────────────────────────────────────────
+    local ac_field api_version
     ac_field=$(prompt_input "Acceptance Criteria custom field ID (optional, e.g. customfield_10028)" "")
 
-    # Verify connectivity
-    print_info "Testing Jira connection..." >&2
-    local test_response
-    test_response=$(curl -s --max-time 10 \
-        -u "${email}:${token}" \
-        -H "Accept: application/json" \
-        "${base_url}/rest/api/3/myself" 2>/dev/null) || true
+    local default_api_version
+    default_api_version=$( [[ "$auth_type" == "pat" ]] && echo "2" || echo "3" )
+    api_version=$(prompt_input "Jira REST API version" "$default_api_version")
 
-    local display_name
-    display_name=$(echo "$test_response" | python3 -c "import sys,json; print(json.load(sys.stdin)['displayName'])" 2>/dev/null)
+    # ── Step 5: Connectivity test ────────────────────────────────────────────
+    print_info "Testing Jira connection..." >&2
+
+    local test_response display_name
+    if [[ "$auth_type" == "cloud" ]]; then
+        test_response=$(curl -s --max-time 10 \
+            -u "${email}:${token}" \
+            -H "Accept: application/json" \
+            "${base_url}/rest/api/${api_version}/myself" 2>/dev/null) || true
+    else
+        test_response=$(curl -s --max-time 10 \
+            -H "Authorization: Bearer ${pat}" \
+            -H "Accept: application/json" \
+            "${base_url}/rest/api/${api_version}/myself" 2>/dev/null) || true
+    fi
+
+    display_name=$(echo "$test_response" | python3 -c \
+        "import sys,json; print(json.load(sys.stdin).get('displayName') or json.load(open('/dev/stdin'))['name'])" \
+        2>/dev/null || \
+        echo "$test_response" | python3 -c \
+        "import sys,json; d=json.load(sys.stdin); print(d.get('displayName','') or d.get('name',''))" 2>/dev/null)
 
     if [[ -z "$display_name" ]]; then
-        print_error "Connection test failed. Check your URL, email and token."
+        print_error "Connection test failed. Check your URL and credentials."
+        print_info  "Response: $(echo "$test_response" | head -c 200)"
         return 1
     fi
 
     print_success "Connected as: ${display_name}"
 
-    # Save to settings.conf
-    _jira_save_setting "JIRA_BASE_URL"    "$base_url"
-    _jira_save_setting "JIRA_USER_EMAIL"  "$email"
-    _jira_save_setting "JIRA_TOKEN"       "$token"
+    # ── Step 6: Persist ──────────────────────────────────────────────────────
+    _jira_save_setting "JIRA_AUTH_TYPE"     "$auth_type"
+    _jira_save_setting "JIRA_BASE_URL"      "$base_url"
+    _jira_save_setting "JIRA_API_VERSION"   "$api_version"
     [[ -n "$ac_field" ]] && _jira_save_setting "JIRA_AC_FIELD" "$ac_field"
 
-    # Apply in current session
+    if [[ "$auth_type" == "cloud" ]]; then
+        _jira_save_setting "JIRA_USER_EMAIL" "$email"
+        _jira_save_setting "JIRA_TOKEN"      "$token"
+        # Apply in session
+        JIRA_USER_EMAIL="$email"
+        JIRA_TOKEN="$token"
+    else
+        _jira_save_setting "JIRA_PAT" "$pat"
+        JIRA_PAT="$pat"
+    fi
+
+    JIRA_AUTH_TYPE="$auth_type"
     JIRA_BASE_URL="$base_url"
-    JIRA_USER_EMAIL="$email"
-    JIRA_TOKEN="$token"
+    JIRA_API_VERSION="$api_version"
     [[ -n "$ac_field" ]] && JIRA_AC_FIELD="$ac_field"
 
     print_success "Jira credentials saved to settings.conf."
@@ -106,32 +202,52 @@ jira_setup_wizard() {
 fetch_jira_issue() {
     local issue_key="$1"
 
-    if [[ -z "${JIRA_BASE_URL:-}" || -z "${JIRA_USER_EMAIL:-}" || -z "${JIRA_TOKEN:-}" ]]; then
+    # Validate credentials are present for the configured auth type
+    if [[ -z "${JIRA_BASE_URL:-}" ]]; then
         return 1
     fi
+    if [[ "${JIRA_AUTH_TYPE:-cloud}" == "pat" ]]; then
+        [[ -z "${JIRA_PAT:-}" ]] && return 1
+    else
+        [[ -z "${JIRA_USER_EMAIL:-}" || -z "${JIRA_TOKEN:-}" ]] && return 1
+    fi
+
+    local api_version
+    api_version=$(_jira_api_version)
 
     # Build fields list — include common AC custom fields automatically
     local fields="summary,description,issuetype,status,priority,labels,components,assignee,reporter,attachment"
     [[ -n "${JIRA_AC_FIELD:-}" ]] && fields+=",${JIRA_AC_FIELD}"
-    # Also probe the two most common AC custom fields used in Atlassian Cloud
     fields+=",customfield_10028,customfield_10016,customfield_10014"
 
-    print_info "Fetching ${issue_key} from Jira..." >&2
+    print_info "Fetching ${issue_key} from Jira (API v${api_version}, auth: ${JIRA_AUTH_TYPE:-cloud})..." >&2
     start_spinner "Contacting Jira API..." >&2
 
     local response http_code
-    response=$(curl -s --max-time 15 \
-        -w "\n__HTTP_CODE__:%{http_code}" \
-        -u "${JIRA_USER_EMAIL}:${JIRA_TOKEN}" \
-        -H "Accept: application/json" \
-        "${JIRA_BASE_URL}/rest/api/3/issue/${issue_key}?fields=${fields}" 2>/dev/null)
+    if [[ "${JIRA_AUTH_TYPE:-cloud}" == "pat" ]]; then
+        response=$(curl -s --max-time 15 \
+            -w "\n__HTTP_CODE__:%{http_code}" \
+            -H "Authorization: Bearer ${JIRA_PAT}" \
+            -H "Accept: application/json" \
+            "${JIRA_BASE_URL}/rest/api/${api_version}/issue/${issue_key}?fields=${fields}" 2>/dev/null)
+    else
+        response=$(curl -s --max-time 15 \
+            -w "\n__HTTP_CODE__:%{http_code}" \
+            -u "${JIRA_USER_EMAIL}:${JIRA_TOKEN}" \
+            -H "Accept: application/json" \
+            "${JIRA_BASE_URL}/rest/api/${api_version}/issue/${issue_key}?fields=${fields}" 2>/dev/null)
+    fi
     stop_spinner >&2
 
     http_code=$(echo "$response" | grep -o '__HTTP_CODE__:[0-9]*' | cut -d: -f2)
     response=$(echo "$response" | sed 's/__HTTP_CODE__:[0-9]*$//')
 
     if [[ "$http_code" == "401" ]]; then
-        print_error "Jira authentication failed (401). Check JIRA_USER_EMAIL and JIRA_TOKEN." >&2
+        if [[ "${JIRA_AUTH_TYPE:-cloud}" == "pat" ]]; then
+            print_error "Jira authentication failed (401). Check your JIRA_PAT — it may be expired or invalid." >&2
+        else
+            print_error "Jira authentication failed (401). Check JIRA_USER_EMAIL and JIRA_TOKEN." >&2
+        fi
         return 1
     elif [[ "$http_code" == "404" ]]; then
         print_error "Issue '${issue_key}' not found in Jira (404). Check the issue key." >&2
@@ -280,12 +396,21 @@ gather_jira_context() {
     fi
 
     # First-time setup if not configured
-    if [[ -z "${JIRA_BASE_URL:-}" || -z "${JIRA_USER_EMAIL:-}" || -z "${JIRA_TOKEN:-}" ]]; then
+    local needs_setup=false
+    if [[ -z "${JIRA_BASE_URL:-}" ]]; then
+        needs_setup=true
+    elif [[ "${JIRA_AUTH_TYPE:-cloud}" == "pat" && -z "${JIRA_PAT:-}" ]]; then
+        needs_setup=true
+    elif [[ "${JIRA_AUTH_TYPE:-cloud}" != "pat" && ( -z "${JIRA_USER_EMAIL:-}" || -z "${JIRA_TOKEN:-}" ) ]]; then
+        needs_setup=true
+    fi
+
+    if [[ "$needs_setup" == "true" ]]; then
         print_warn "Jira credentials not configured." >&2
         if confirm_prompt "Run Jira setup wizard now?" "y"; then
             jira_setup_wizard || { echo ""; return 0; }
         else
-            print_info "Tip: set JIRA_BASE_URL, JIRA_USER_EMAIL, JIRA_TOKEN in config/settings.conf" >&2
+            print_info "Tip: configure Jira via menu option 8 or set JIRA_* vars in config/settings.conf" >&2
             echo ""
             return 0
         fi
