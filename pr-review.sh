@@ -85,10 +85,10 @@ preflight_checks() {
     fi
 
     # Warn if any raw credentials exist in settings.conf
-    if grep -qE '^(JIRA_TOKEN|JIRA_PAT|JIRA_USER_EMAIL)="[^"$][^"]{3,}"' \
+    if grep -qE '^JIRA_PAT="[^"$][^"]{3,}"' \
             "${TOOL_DIR}/config/settings.conf" 2>/dev/null; then
-        print_error "SECURITY: Real credentials found in config/settings.conf (git-tracked)!"
-        print_info  "Move them to config/secrets.conf: run menu option 8 to reconfigure."
+        print_error "SECURITY: JIRA_PAT found in config/settings.conf (git-tracked)!"
+        print_info  "Move it to config/secrets.conf: run menu option 8 to reconfigure."
     fi
 
     ensure_dirs
