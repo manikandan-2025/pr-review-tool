@@ -191,23 +191,21 @@ pr-878-review-2026-05-20.md
 
 You need these tools installed on your machine:
 
-| Tool | Purpose | How to check | Install |
-|------|---------|--------------|---------|
-| `git` (2.5+) | Repository operations and worktrees | `git --version` | Your system package manager |
-| `gh` (GitHub CLI) | GitHub API access, Copilot integration | `gh --version` | https://cli.github.com |
-| `gh copilot` | AI code analysis | `gh copilot --version` | See below |
-| `bash` (4.0+) | Running the tool | `bash --version` | Usually pre-installed on Linux/Mac |
-| `python3` | Parsing GitHub API JSON responses | `python3 --version` | Usually pre-installed |
+| Tool | Purpose | How to check |
+|------|---------|--------------|
+| `git` (2.5+) | Repository operations and worktrees | `git --version` |
+| `gh` (GitHub CLI) | GitHub API access, Copilot integration | `gh --version` |
+| `gh copilot` | AI code analysis | `gh copilot --version` |
+| `bash` (4.0+) | Running the tool | `bash --version` |
+| `python3` | Parsing GitHub API JSON responses | `python3 --version` |
 
-### Installing GitHub CLI (`gh`)
+> 💡 **Don't install these manually** — run `./setup.sh` instead. It detects what's missing and installs everything automatically (see Section 5).
+
+### Installing GitHub CLI (`gh`) — manual fallback
 
 **Linux (Debian/Ubuntu):**
 ```bash
 sudo apt install gh
-# or
-curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list
-sudo apt update && sudo apt install gh
 ```
 
 **Mac:**
@@ -215,7 +213,11 @@ sudo apt update && sudo apt install gh
 brew install gh
 ```
 
+**All platforms:** https://cli.github.com
+
 ### Installing GitHub Copilot CLI extension
+
+In newer versions of `gh`, Copilot is a **built-in command** and no extension install is needed. If it's not present:
 
 ```bash
 gh extension install github/gh-copilot
@@ -227,31 +229,49 @@ gh copilot --version   # verify it works
 ```bash
 gh auth login
 # Select: GitHub.com → HTTPS → authenticate via browser
-# Verify with:
-gh auth status
-```
-
-You should see:
-```
-✓ Logged in to github.com account your-username
-✓ Token: gho_****
+gh auth status  # verify
 ```
 
 ---
 
 ## 5. First-Time Setup
 
-### Step 1: Clone the tool
+### The recommended way — `setup.sh`
 
 ```bash
 git clone https://github.com/manikandan-2025/pr-review-tool.git ~/pas-project/pr-review-tool
 cd ~/pas-project/pr-review-tool
-chmod +x pr-review.sh
+chmod +x setup.sh && ./setup.sh
 ```
 
-### Step 2: Clone the target repositories (if not done already)
+`setup.sh` is an interactive 8-step wizard that handles everything:
+
+```
+Step 1 — Checks git, python3
+Step 2 — Installs gh CLI if missing (apt / dnf / brew — auto-detected)
+Step 3 — Runs gh auth login if not authenticated
+Step 4 — Installs GitHub Copilot (extension or detects built-in)
+Step 5 — Creates repos.conf; asks for your local clone path interactively
+Step 6 — Creates secrets.conf for Jira PAT (optional, input hidden)
+Step 7 — Installs the pre-commit security hook
+Step 8 — 11-point verification (shows ✔/⚠ for each item)
+```
+
+On a fully configured machine it shows `11/11 ✔ Setup complete!` and exits.  
+Re-run `./setup.sh` any time to verify your setup or fix a failing step.
+
+---
+
+### Manual setup (step-by-step)
+
+If you prefer or `setup.sh` can't complete a step:
+
+#### Step 1: Clone the tool and target repos
 
 ```bash
+git clone https://github.com/manikandan-2025/pr-review-tool.git ~/pas-project/pr-review-tool
+cd ~/pas-project/pr-review-tool
+
 # pas-ou (Angular frontend)
 git clone https://github.com/dedalus-cis4u/pas-ou.git ~/pas-project/pas-ou
 
@@ -259,34 +279,29 @@ git clone https://github.com/dedalus-cis4u/pas-ou.git ~/pas-project/pas-ou
 git clone https://github.com/dedalus-cis4u/pas-4u-ci.git ~/pas-project/pas-4u-ci
 ```
 
-### Step 3: Register your repos in `config/repos.conf`
+#### Step 2: Create `config/repos.conf`
 
-Open `config/repos.conf` and add a line per repo in this format:
-
-```
-alias|github-owner/repo-name|/absolute/path/to/local/clone
-```
-
-**Example:**
-
-```
-pas-ou|dedalus-cis4u/pas-ou|/home/yourname/pas-project/pas-ou
-pas-4u|dedalus-cis4u/pas-4u-ci|/home/yourname/pas-project/pas-4u-ci
-```
-
-> 💡 You can also add repos interactively: run the tool and choose **Option 7 → Manage Repositories → Add Repo**
-
-### Step 4: Set your active repository
-
-Open `config/settings.conf` and set:
+`repos.conf` is **gitignored** — it is personal to your machine. Create it from the example:
 
 ```bash
-ACTIVE_REPO="pas-ou"   # must match an alias in repos.conf
+cp config/repos.conf.example config/repos.conf
 ```
 
-Or switch anytime from the menu: **Option 7 → Switch Active Repo**
+Edit it to add your repos. Paths support `~/` shorthand:
 
-### Step 5: Set up Jira integration (recommended)
+```
+pas-ou|dedalus-cis4u/pas-ou|~/pas-project/pas-ou
+pas-4u|dedalus-cis4u/pas-4u-ci|~/pas-project/pas-4u-ci
+```
+
+> 💡 You can also add repos interactively: run the tool and choose **Option 7 → Manage Repositories → 2) Add a repo**
+
+#### Step 3: Set your active repository
+
+The tool defaults to `ACTIVE_REPO="pas-ou"` in `config/settings.conf`.  
+Switch anytime from the menu: **Option 7 → 1) Switch active repo**
+
+#### Step 4: Set up Jira integration (recommended)
 
 Run the tool and choose **Option 8 — Configure Jira Integration**.
 
@@ -295,16 +310,14 @@ You will need:
 - A Personal Access Token (PAT) — generate it at:  
   `<jira-url>/secure/ViewProfile.jspa` → **Personal Access Tokens** → **Create token**
 
-Your PAT is saved to `config/secrets.conf` — a file that is **gitignored and chmod 600** (never committed to git). See [Section 12 — Credential Safety](#12-credential-safety) for details.
+Your PAT is saved to `config/secrets.conf` — **gitignored and chmod 600** (never committed to git). See [Section 12 — Credential Safety](#12-credential-safety).
 
-### Step 6: Verify everything works
+#### Step 5: Verify everything works
 
 ```bash
 cd ~/pas-project/pr-review-tool
-./pr-review.sh --help
+./setup.sh   # or: ./pr-review.sh --help
 ```
-
-You should see the help text with usage and current active repo.
 
 ---
 
@@ -495,21 +508,31 @@ Shows all isolated PR directories and lets you remove them:
 
 ### Option 7: Manage Repositories
 
-Add, remove, or switch the active repository — no config file editing needed.
+Add, remove, switch, or update the local path for any registered repository — no config file editing needed.
 
 ```
-  1) Switch Active Repo      ← Change which repo is reviewed
-  2) Add Repo                ← Register a new repo (alias|gh-repo|local-path)
-  3) Remove Repo             ← Unregister a repo
-  4) List Repos              ← See all registered repos
-  0) Back to main menu
+  1) Switch active repo      ← Change which repo is reviewed
+  2) Add a repo              ← Register a new repo (alias|gh-repo|local-path)
+  3) Remove a repo           ← Unregister a repo
+  4) Update local path       ← Fix a path that's wrong for this machine (⚠ path not found)
+  5) Back to main menu
 ```
+
+**If you see `⚠ path not found` next to a repo**, it means the local path in `repos.conf` doesn't exist on your machine (common when a teammate's paths are different from yours). Use **option 4) Update local path** — it asks for your correct path and updates `repos.conf` on the spot. Paths support `~/` shorthand:
+
+```
+  Current path for 'pas-ou': /home/otheruser/pas-project/pas-ou
+  New local clone path (~ supported): ~/my-projects/pas-ou
+  ✔  Path updated for 'pas-ou': /home/yourname/my-projects/pas-ou
+```
+
+> 💡 `repos.conf` is **gitignored** — it is personal to your machine. Changes you make here only affect your local copy.
 
 **Example: switching from `pas-ou` to `pas-4u`:**
 
 ```
   → Enter number or alias to switch to: pas-4u
-  ✔  Switched to 'pas-4u' (dedalus-cis4u/pas-4u-ci)
+  ✔  Switched to: pas-4u  (dedalus-cis4u/pas-4u-ci)
 ```
 
 All future reviews in this session will now target `pas-4u`. The setting is persisted to `config/settings.conf`.
@@ -1006,9 +1029,35 @@ The issue key format is wrong or the issue doesn't exist in your Jira instance.
 - Check the format: must be `PROJECT-NUMBER` like `HPAS-1234` or `PAS-567`
 - Make sure the project key is correct for your Jira instance
 
-### Active repo path not found
+### Active repo `⚠ path not found`
 
-The path in `config/repos.conf` doesn't match your local machine. Fix it via **Option 7 → Manage Repositories**, or edit `config/repos.conf` directly.
+The path stored in `config/repos.conf` doesn't exist on this machine (common for new team members, or if you cloned to a different location).
+
+**Fix using the menu:**
+```
+Option 7 → 4) Update local path
+Enter your correct path (~/... or absolute)
+```
+
+**Fix by running setup.sh:**
+```bash
+./setup.sh   # step 5 lets you re-enter your local path
+```
+
+`repos.conf` is **gitignored** — changes stay local to your machine.
+
+### Copilot CLI not available
+
+If `gh copilot --version` fails:
+
+```bash
+./setup.sh   # step 4 installs or detects it automatically
+# or manually:
+gh extension install github/gh-copilot
+```
+
+In newer versions of `gh`, Copilot is a built-in command — no extension needed. The tool gracefully falls back to saving a prompt file you can paste into VS Code Copilot Chat.
+
 
 ### "secrets.conf permissions are NNN — should be 600"
 
@@ -1126,7 +1175,7 @@ cd ~/pas-project/pr-review-tool
 git pull origin feat/multi-repo-feature-branch
 ```
 
-Your `config/settings.conf` and `config/secrets.conf` are not overwritten by git pull. If `config/repos.conf` changes, merge carefully — it contains your personal local paths.
+Your `config/settings.conf` and `config/secrets.conf` are not overwritten by git pull. `config/repos.conf` is **gitignored** — it is personal to your machine and never committed. If you need to share repo aliases with your team, add them to `config/repos.conf.example` instead.
 
 ---
 

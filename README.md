@@ -11,7 +11,7 @@
 - [Key Features](#key-features)
 - [How It Works — Step by Step](#how-it-works--step-by-step)
 - [Prerequisites](#prerequisites)
-- [First-Time Setup](#first-time-setup)
+- [First-Time Setup](#first-time-setup) ← **Start here if you're new**
 - [Running a Review](#running-a-review)
 - [The Interactive Menu](#the-interactive-menu)
 - [Jira Integration](#jira-integration)
@@ -76,85 +76,98 @@ Step 10 ─ Ask: "Open the report now?"
 
 ## Prerequisites
 
-Make sure these tools are installed **before** you begin:
+## Prerequisites
 
-| Tool | Min Version | How to Install |
-|------|-------------|----------------|
-| `git` | 2.5+ | `sudo apt install git` / `brew install git` |
-| `gh` (GitHub CLI) | 2.x | https://cli.github.com |
-| `bash` | 4.0+ | Already installed on Linux/macOS |
-| `python3` | 3.6+ | `sudo apt install python3` / `brew install python3` |
-| GitHub Copilot CLI | any | `gh extension install github/gh-copilot` |
+You need `git`, `gh` (GitHub CLI), `python3`, and `bash 4+` on your machine — that's all. **The `setup.sh` script installs everything else for you** (see First-Time Setup below).
 
-**Authenticate the GitHub CLI** (one-time):
+If you prefer to check manually:
 
-```bash
-gh auth login
-# Follow the prompts — choose GitHub.com → HTTPS → browser login
-
-gh copilot --version
-# Should print a version number. If not, run the gh extension install command above.
-```
+| Tool | Min Version | How to check |
+|------|-------------|--------------|
+| `git` | 2.5+ | `git --version` |
+| `gh` (GitHub CLI) | 2.x | `gh --version` — install from https://cli.github.com |
+| `bash` | 4.0+ | `bash --version` — pre-installed on Linux/macOS |
+| `python3` | 3.6+ | `python3 --version` — pre-installed on most systems |
+| GitHub Copilot | any | `gh copilot --version` — `setup.sh` installs this |
 
 ---
 
 ## First-Time Setup
 
-### Step 1 — Clone this tool
+### The fast way — run `setup.sh` (recommended)
+
+```bash
+git clone https://github.com/manikandan-2025/pr-review-tool.git
+cd pr-review-tool
+chmod +x setup.sh && ./setup.sh
+```
+
+`setup.sh` handles everything in one go:
+
+| Step | What it does |
+|------|-------------|
+| 1 | Checks `git` and `python3` |
+| 2 | **Installs `gh` CLI** automatically (apt / dnf / brew — OS detected) |
+| 3 | **Logs you into GitHub** — runs `gh auth login` if needed |
+| 4 | **Installs GitHub Copilot** extension (or detects it as a built-in) |
+| 5 | Creates `config/repos.conf` and **asks for your local repo path** interactively |
+| 6 | Creates `config/secrets.conf` for Jira PAT (optional, input is hidden) |
+| 7 | Installs the pre-commit security hook |
+| 8 | Runs **11-point verification** — shows exactly what passed or needs fixing |
+
+When complete you'll see `11/11 ✔ Setup complete!` and you can run `./pr-review.sh` immediately.
+
+> 💡 Re-run `./setup.sh` at any time to check your setup status or fix a failing step.
+
+---
+
+### Manual setup (if you prefer step-by-step)
+
+<details>
+<summary>Click to expand manual steps</summary>
+
+**Step 1 — Clone this tool and the target repo:**
 
 ```bash
 git clone https://github.com/manikandan-2025/pr-review-tool.git
 cd pr-review-tool
 chmod +x pr-review.sh
-```
 
-### Step 2 — Clone the target repository (if not already done)
-
-This tool reviews PRs in your team's Angular repos. You need a local clone of each repo you want to review.
-
-```bash
-# Example for pas-ou
+# Clone the repo you want to review (if not already done)
 git clone https://github.com/dedalus-cis4u/pas-ou.git ~/pas-project/pas-ou
-
-# Example for pas-4u-ci
-git clone https://github.com/dedalus-cis4u/pas-4u-ci.git ~/pas-project/pas-4u-ci
 ```
 
-### Step 3 — Register your repos
-
-Open `config/repos.conf` and add your local paths. Each line uses the format:
-
-```
-alias|github-owner/repo-name|/absolute/local/path
-```
-
-**Example:**
-
-```
-pas-ou|dedalus-cis4u/pas-ou|/home/yourname/pas-project/pas-ou
-pas-4u|dedalus-cis4u/pas-4u-ci|/home/yourname/pas-project/pas-4u-ci
-```
-
-> 💡 You can also add repos interactively from the menu: **Option 7 → Manage Repositories → Add Repo**
-
-### Step 4 — Set the active repository
-
-Open `config/settings.conf` and set the alias you want to use by default:
+**Step 2 — Install GitHub CLI and Copilot:**
 
 ```bash
-ACTIVE_REPO="pas-ou"   # must match an alias in repos.conf
+# Install gh CLI: https://cli.github.com
+gh auth login                            # authenticate with GitHub
+gh extension install github/gh-copilot  # install Copilot (if not built-in)
+gh copilot --version                     # verify
 ```
 
-Or switch it anytime from the menu: **Option 7 → Switch Active Repo**
+**Step 3 — Add your repo to `config/repos.conf`:**
 
-### Step 5 — Set up Jira integration (optional but recommended)
+`config/repos.conf` is **gitignored** (personal, per-machine). Create it from the example:
 
-Run the tool and choose **Option 8 — Configure Jira Integration**.  
-You will be asked for:
-- Your Jira instance URL (e.g. `https://jira.yourcompany.com`)
-- A Personal Access Token (PAT) — generated at: `<jira-url>/secure/ViewProfile.jspa` → Personal Access Tokens
+```bash
+cp config/repos.conf.example config/repos.conf
+```
 
-Your PAT is saved to `config/secrets.conf` — a file that is **gitignored and chmod 600** (never committed).
+Then add your repo — paths support `~/` shorthand:
+
+```
+pas-ou|dedalus-cis4u/pas-ou|~/pas-project/pas-ou
+pas-4u|dedalus-cis4u/pas-4u-ci|~/pas-project/pas-4u-ci
+```
+
+Or use the interactive menu: **Option 7 → Manage Repositories → Add a repo**
+
+**Step 4 — Set up Jira (optional):**
+
+Run `./pr-review.sh` → **Option 8 — Configure Jira Integration**
+
+</details>
 
 ---
 
@@ -329,17 +342,19 @@ The tool automatically checks 60+ rules across these categories:
 pr-review-tool/
 │
 ├── pr-review.sh                  ← Main script — run this!
+├── setup.sh                      ← First-time setup — installs everything for new users
 ├── pr-review.instructions.md     ← All 60+ review rules with examples
 │
 ├── config/
-│   ├── repos.conf                ← Your repo registry (alias|gh-repo|local-path)
-│   ├── settings.conf             ← General settings (active repo, paths, behaviour)
+│   ├── repos.conf                ← 🔒 Your repo registry (gitignored — per-machine)
+│   ├── repos.conf.example        ← Template — auto-copied on first run
+│   ├── settings.conf             ← General settings (active repo, behaviour)
 │   ├── secrets.conf              ← 🔒 Your JIRA_PAT (gitignored, chmod 600)
 │   └── secrets.conf.example      ← Template — copy to secrets.conf to get started
 │
 ├── lib/
 │   ├── utils.sh                  ← Colours, logging, spinner, input prompts
-│   ├── repo-config.sh            ← Multi-repo management (load, switch, add, remove)
+│   ├── repo-config.sh            ← Multi-repo management (load, switch, add, remove, update path)
 │   ├── checkout.sh               ← Git worktree: fetch PR, create/remove worktree
 │   ├── analyze.sh                ← All rule violation scanners (scan_* functions)
 │   ├── copilot.sh                ← GitHub Copilot AI integration
@@ -378,15 +393,16 @@ This tool handles two types of credentials: your **GitHub token** (managed by `g
 
 | Problem | Cause | Solution |
 |---------|-------|----------|
-| `gh auth status` fails | Not logged into GitHub CLI | Run `gh auth login` |
-| `gh copilot --version` fails | Extension not installed | `gh extension install github/gh-copilot` |
+| `gh auth status` fails | Not logged into GitHub CLI | Run `gh auth login` or re-run `./setup.sh` |
+| `gh copilot --version` fails | Extension not installed | Run `./setup.sh` — it installs it automatically |
 | `fatal: not a git repository` | Wrong working directory | Run from `pr-review-tool/` folder |
 | Worktree already exists error | Previous checkout left behind | Choose **Option 6 → Clean Up PR Checkouts** then retry |
 | Copilot AI returns nothing | CLI unavailable / not authenticated | A prompt file is saved automatically — paste it into VS Code Copilot Chat |
 | Wrong number of changed files | Local repo is out of date | Run `git fetch origin` inside your `pas-ou` folder |
 | Jira connection failed (401) | PAT expired or wrong | Run **Option 8** and enter a fresh PAT |
 | Jira issue "not found" (404) | Wrong issue key format | Check the key format: must be like `HPAS-1234` or `PAS-567` |
-| Active repo path not found | Path in `repos.conf` is wrong | Use **Option 7 → Manage Repositories** to update the path |
+| Active repo `⚠ path not found` | Path in `repos.conf` is wrong for this machine | **Option 7 → 4) Update local path** — enter your correct path (supports `~/`) |
+| `repos.conf` has no entries | First run after cloning | Run `./setup.sh` step 5, or **Option 7 → 2) Add a repo** |
 | `python3: command not found` | Python not installed | `sudo apt install python3` or `brew install python3` |
 
 ---
