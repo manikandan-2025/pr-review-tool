@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-#  pr-review.sh — Interactive PR Code Review Tool for dedalus-cis4u/pas-ou
+#  pr-review.sh — Interactive PR Code Review Tool (multi-repo)
 #
 #  Usage:
 #    ./pr-review.sh              → interactive menu
@@ -19,9 +19,16 @@ TOOL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=config/settings.conf
 source "${TOOL_DIR}/config/settings.conf"
 
+# Load secrets (gitignored, chmod 600) — created by menu option 8 or manually
+if [[ -f "${TOOL_DIR}/config/secrets.conf" ]]; then
+    source "${TOOL_DIR}/config/secrets.conf"
+fi
+
 # Load libraries
 # shellcheck source=lib/utils.sh
 source "${TOOL_DIR}/lib/utils.sh"
+# shellcheck source=lib/repo-config.sh
+source "${TOOL_DIR}/lib/repo-config.sh"
 # shellcheck source=lib/checkout.sh
 source "${TOOL_DIR}/lib/checkout.sh"
 # shellcheck source=lib/analyze.sh
@@ -32,6 +39,11 @@ source "${TOOL_DIR}/lib/copilot.sh"
 source "${TOOL_DIR}/lib/report.sh"
 # shellcheck source=lib/instructions.sh
 source "${TOOL_DIR}/lib/instructions.sh"
+# shellcheck source=lib/jira-context.sh
+source "${TOOL_DIR}/lib/jira-context.sh"
+
+# Resolve REPO_PATH + GITHUB_REPO from the active repo in repos.conf
+load_active_repo || true
 
 # ---------------------------------------------------------------------------
 # Pre-flight checks
@@ -40,15 +52,43 @@ preflight_checks() {
     require_command git
     require_command gh
 
-    if [[ ! -d "$REPO_PATH" ]]; then
-        print_error "Repository not found at: ${REPO_PATH}"
-        print_info "Update REPO_PATH in: ${TOOL_DIR}/config/settings.conf"
-        exit 1
+    if [[ -z "${REPO_PATH:-}" || ! -d "$REPO_PATH" ]]; then
+        print_error "Active repo '${ACTIVE_REPO}' not found at: ${REPO_PATH:-<not set>}"
+        print_info "Use option 7 (Manage Repositories) to configure or switch repos."
+        print_info "Continuing so you can access the menu and update the active repository."
     fi
 
     if ! gh auth status &>/dev/null; then
         print_error "GitHub CLI is not authenticated. Run: gh auth login"
         exit 1
+    fi
+
+    # ── Credential safety checks ─────────────────────────────────────────────
+    local secrets_file="${TOOL_DIR}/config/secrets.conf"
+
+    # Warn if secrets.conf is tracked by git (should never happen due to .gitignore)
+    if git -C "$TOOL_DIR" ls-files --error-unmatch "$secrets_file" &>/dev/null 2>&1; then
+        print_error "SECURITY: config/secrets.conf is tracked by git!"
+        print_error "Your credentials may be exposed in git history."
+        print_info  "Fix: git rm --cached config/secrets.conf && git commit -m 'remove secrets'"
+    fi
+
+    # Warn if secrets.conf permissions are too open
+    if [[ -f "$secrets_file" ]]; then
+        local perms
+        perms=$(stat -c "%a" "$secrets_file" 2>/dev/null || stat -f "%A" "$secrets_file" 2>/dev/null)
+        if [[ "$perms" != "600" && "$perms" != "400" ]]; then
+            print_warn "config/secrets.conf permissions are ${perms} — should be 600."
+            print_info "Fix: chmod 600 ${secrets_file}"
+            chmod 600 "$secrets_file" && print_success "Auto-fixed permissions to 600."
+        fi
+    fi
+
+    # Warn if any raw credentials exist in settings.conf
+    if grep -qE '^JIRA_PAT="[^"$][^"]{3,}"' \
+            "${TOOL_DIR}/config/settings.conf" 2>/dev/null; then
+        print_error "SECURITY: JIRA_PAT found in config/settings.conf (git-tracked)!"
+        print_info  "Move it to config/secrets.conf: run menu option 8 to reconfigure."
     fi
 
     ensure_dirs
@@ -59,12 +99,10 @@ preflight_checks() {
 # ---------------------------------------------------------------------------
 show_banner() {
     echo -e "${BOLD}${CYAN}"
-    cat <<'BANNER'
-  ╔═══════════════════════════════════════════════════════════╗
-  ║          PAS-OU  ·  PR Code Review Tool                   ║
-  ║          dedalus-cis4u/pas-ou                             ║
-  ╚═══════════════════════════════════════════════════════════╝
-BANNER
+    echo "  ╔═══════════════════════════════════════════════════════════╗"
+    echo "  ║          PAS  ·  PR Code Review Tool                      ║"
+    printf "  ║          %-49s ║\n" "${GITHUB_REPO}"
+    echo "  ╚═══════════════════════════════════════════════════════════╝"
     echo -e "${RESET}"
 }
 
@@ -72,16 +110,18 @@ BANNER
 # Main menu
 # ---------------------------------------------------------------------------
 show_menu() {
-    echo -e "${BOLD}  What would you like to do?${RESET}\n"
+    echo -e "${BOLD}  Active repo: ${CYAN}${ACTIVE_REPO}${RESET}${BOLD}  (${GITHUB_REPO})${RESET}\n"
     echo -e "  ${CYAN}1)${RESET} Review a Pull Request"
     echo -e "  ${CYAN}2)${RESET} View Review Rules"
     echo -e "  ${CYAN}3)${RESET} Edit Review Rules"
     echo -e "  ${CYAN}4)${RESET} Add a New Rule"
     echo -e "  ${CYAN}5)${RESET} View Past Reports"
     echo -e "  ${CYAN}6)${RESET} Clean Up PR Checkouts"
-    echo -e "  ${CYAN}7)${RESET} Exit"
+    echo -e "  ${CYAN}7)${RESET} Manage Repositories"
+    echo -e "  ${CYAN}8)${RESET} Configure Jira Integration"
+    echo -e "  ${CYAN}0)${RESET} Exit"
     echo ""
-    printf "  \033[1m→\033[0m Enter choice [1-7]: "
+    printf "  \033[1m→\033[0m Enter choice [0-8]: "
     read -r MENU_CHOICE
 }
 
@@ -124,7 +164,13 @@ review_pr_workflow() {
     echo -e "  ${BOLD}State:${RESET}   ${pr_state}"
     echo ""
 
-    # Step 2: Check for existing worktree BEFORE fetching
+    # Step 2: Gather Jira story / defect context (optional)
+    # NOTE: called directly (not via $(...)) so interactive prompts are visible
+    JIRA_CONTEXT_RESULT=""
+    gather_jira_context
+    local jira_context="${JIRA_CONTEXT_RESULT:-}"
+
+    # Step 3: Check for existing worktree BEFORE fetching
     # (git refuses to fetch into a branch checked out in a worktree)
     local worktree_path="${CHECKOUTS_DIR}/pr-${pr_number}"
     local reusing=false
@@ -185,7 +231,7 @@ review_pr_workflow() {
         report_path_prelim=$(get_report_path "$pr_number")
         ai_section=$(generate_copilot_section \
             "$pr_number" "$merge_base" "$pr_title" "$pr_author" "$pr_base" \
-            "$report_path_prelim")
+            "$report_path_prelim" "$jira_context")
     else
         ai_section="> _AI analysis skipped. Run again and choose 'Yes' to include Copilot review._"
     fi
@@ -195,7 +241,7 @@ review_pr_workflow() {
     local report_path
     report_path=$(generate_report \
         "$pr_number" "$pr_title" "$pr_author" "$pr_base" "$pr_created" \
-        "$merge_base" "$ai_section")
+        "$merge_base" "$ai_section" "$jira_context")
 
     print_report_summary "$report_path" "$pr_number"
 
@@ -290,26 +336,40 @@ cleanup_checkouts() {
 # ---------------------------------------------------------------------------
 show_help() {
     cat <<HELP
-${BOLD}PAS-OU PR Review Tool${RESET}
+${BOLD}PAS PR Review Tool${RESET}
 
 ${BOLD}USAGE${RESET}
   ./pr-review.sh              Start interactive menu
   ./pr-review.sh --pr <N>     Directly review PR number N
   ./pr-review.sh --help       Show this help
 
-${BOLD}CONFIGURATION${RESET}
+${BOLD}MULTI-REPO CONFIGURATION${RESET}
+  Repos registry : ${TOOL_DIR}/config/repos.conf
+    Format       : alias|github_owner/repo|/local/clone/path
+  Active repo    : set via ACTIVE_REPO in config/settings.conf
+                   or interactively through menu option 7.
+
+  Currently active: ${ACTIVE_REPO}  (${GITHUB_REPO})
+
+${BOLD}OTHER SETTINGS${RESET}
   Edit: ${TOOL_DIR}/config/settings.conf
-  - REPO_PATH         Path to your local pas-ou clone
+  - ACTIVE_REPO       Alias of the repo to operate on
   - INSTRUCTIONS_FILE Path to pr-review.instructions.md
   - REPORTS_DIR       Where reports are saved
   - CHECKOUTS_DIR     Where PR worktrees are created
 
 ${BOLD}WHAT IT DOES${RESET}
   1. Fetches the PR branch from GitHub (isolated git worktree)
-  2. Scans changed files against all rules in the instructions file
-  3. Runs GitHub Copilot AI for deeper narrative analysis
-  4. Generates a Markdown report with severity-grouped findings
-  5. Optionally posts the report as a PR comment
+  2. Optionally fetches Jira story/defect context (summary, ACs, attachments)
+  3. Scans changed files against all rules in the instructions file
+  4. Runs GitHub Copilot AI for deeper narrative analysis (Jira-aware if context provided)
+  5. Generates a Markdown report with severity-grouped findings + Jira context section
+
+  Option 7 — Manage Repositories:
+    Add / remove / switch active repo (pas-ou, pas-4u, etc.)
+
+  Option 8 — Configure Jira Integration:
+    Set JIRA_BASE_URL, JIRA_USER_EMAIL, JIRA_TOKEN for automatic story/defect fetch
 
 ${BOLD}REQUIREMENTS${RESET}
   - git (2.5+)
@@ -354,12 +414,14 @@ main() {
             4) add_rule ;;
             5) view_past_reports ;;
             6) cleanup_checkouts ;;
-            7|q|Q|exit|quit)
+            7) configure_repos_menu ;;
+            8) jira_setup_wizard ;;
+            0|q|Q|exit|quit)
                 echo -e "\n  ${DIM}Goodbye!${RESET}\n"
                 exit 0
                 ;;
             *)
-                print_warn "Invalid choice '${MENU_CHOICE}'. Enter a number 1-7."
+                print_warn "Invalid choice '${MENU_CHOICE}'. Enter a number 0-8."
                 ;;
         esac
         echo ""

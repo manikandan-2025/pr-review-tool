@@ -15,6 +15,7 @@ build_review_prompt() {
     local pr_title="$3"
     local pr_author="$4"
     local pr_base="$5"
+    local jira_context="${6:-}"
 
     local rules_summary
     rules_summary=$(extract_rules_summary)
@@ -54,7 +55,13 @@ You are a senior Angular developer performing a code review for the \`dedalus-ci
 - **Title**: ${pr_title}
 - **Author**: ${pr_author}
 - **Base branch**: ${pr_base}
+$(if [[ -n "$jira_context" ]]; then echo "
+## User Story / Defect Context (from Jira)
+The PR is expected to implement or fix the following Jira item.
+Use this to verify the code changes match the stated requirements and acceptance criteria.
 
+${jira_context}
+"; fi)
 ## Review Rules
 The team follows these rules (violations are labeled with their rule IDs):
 
@@ -65,7 +72,7 @@ ${diff_content}${remaining_note}
 
 ## Your Task
 1. Review the diff above against ALL rules listed
-2. Identify violations not caught by static analysis (logic issues, design problems, architecture concerns)
+$(if [[ -n "$jira_context" ]]; then echo "2. Verify the implementation against the Jira story/defect context above — flag any missing requirements or unaddressed acceptance criteria"; else echo "2. Identify violations not caught by static analysis (logic issues, design problems, architecture concerns)"; fi)
 3. Assess overall code quality, readability, and maintainability
 4. Highlight any BLOCKER issues that must be fixed before merge
 5. Provide specific, actionable feedback with file:line references where possible
@@ -165,9 +172,10 @@ generate_copilot_section() {
     local pr_author="$4"
     local pr_base="$5"
     local report_path="$6"
+    local jira_context="${7:-}"
 
     local prompt
-    prompt=$(build_review_prompt "$pr_number" "$merge_base" "$pr_title" "$pr_author" "$pr_base")
+    prompt=$(build_review_prompt "$pr_number" "$merge_base" "$pr_title" "$pr_author" "$pr_base" "$jira_context")
 
     # Always save the prompt regardless of CLI availability
     local prompt_file
