@@ -183,6 +183,9 @@ ac_field   = sys.argv[3] if len(sys.argv) > 3 and sys.argv[3] else ''
 tmpjson    = sys.argv[4]
 
 def adf_to_text(node, depth=0):
+    # API v2 returns description as a plain string; API v3 returns ADF (dict)
+    if isinstance(node, str):
+        return node
     if not isinstance(node, dict):
         return ''
     ntype = node.get('type', '')
