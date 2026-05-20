@@ -24,6 +24,7 @@ generate_report() {
     local pr_created="$5"
     local merge_base="$6"
     local ai_section="$7"
+    local jira_context="${8:-}"
     local report_path
     report_path=$(get_report_path "$pr_number")
 
@@ -86,6 +87,18 @@ ${verdict}
 ---
 
 HEADER
+
+        # ── Jira Context (if provided) ───────────────────────────────────────
+        if [[ -n "$jira_context" ]]; then
+            cat <<JIRA_SECTION
+## 📋 Jira Story / Defect Context
+
+${jira_context}
+
+---
+
+JIRA_SECTION
+        fi
 
         # ── Findings by Severity ────────────────────────────────────────────
         for severity in BLOCKER MAJOR MINOR; do

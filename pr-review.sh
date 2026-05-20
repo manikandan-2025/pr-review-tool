@@ -34,6 +34,8 @@ source "${TOOL_DIR}/lib/copilot.sh"
 source "${TOOL_DIR}/lib/report.sh"
 # shellcheck source=lib/instructions.sh
 source "${TOOL_DIR}/lib/instructions.sh"
+# shellcheck source=lib/jira-context.sh
+source "${TOOL_DIR}/lib/jira-context.sh"
 
 # Resolve REPO_PATH + GITHUB_REPO from the active repo in repos.conf
 load_active_repo || true
@@ -83,9 +85,10 @@ show_menu() {
     echo -e "  ${CYAN}5)${RESET} View Past Reports"
     echo -e "  ${CYAN}6)${RESET} Clean Up PR Checkouts"
     echo -e "  ${CYAN}7)${RESET} Manage Repositories"
+    echo -e "  ${CYAN}8)${RESET} Configure Jira Integration"
     echo -e "  ${CYAN}0)${RESET} Exit"
     echo ""
-    printf "  \033[1m→\033[0m Enter choice [0-7]: "
+    printf "  \033[1m→\033[0m Enter choice [0-8]: "
     read -r MENU_CHOICE
 }
 
@@ -128,7 +131,11 @@ review_pr_workflow() {
     echo -e "  ${BOLD}State:${RESET}   ${pr_state}"
     echo ""
 
-    # Step 2: Check for existing worktree BEFORE fetching
+    # Step 2: Gather Jira story / defect context (optional)
+    local jira_context
+    jira_context=$(gather_jira_context)
+
+    # Step 3: Check for existing worktree BEFORE fetching
     # (git refuses to fetch into a branch checked out in a worktree)
     local worktree_path="${CHECKOUTS_DIR}/pr-${pr_number}"
     local reusing=false
@@ -189,7 +196,7 @@ review_pr_workflow() {
         report_path_prelim=$(get_report_path "$pr_number")
         ai_section=$(generate_copilot_section \
             "$pr_number" "$merge_base" "$pr_title" "$pr_author" "$pr_base" \
-            "$report_path_prelim")
+            "$report_path_prelim" "$jira_context")
     else
         ai_section="> _AI analysis skipped. Run again and choose 'Yes' to include Copilot review._"
     fi
@@ -199,7 +206,7 @@ review_pr_workflow() {
     local report_path
     report_path=$(generate_report \
         "$pr_number" "$pr_title" "$pr_author" "$pr_base" "$pr_created" \
-        "$merge_base" "$ai_section")
+        "$merge_base" "$ai_section" "$jira_context")
 
     print_report_summary "$report_path" "$pr_number"
 
@@ -318,12 +325,16 @@ ${BOLD}OTHER SETTINGS${RESET}
 
 ${BOLD}WHAT IT DOES${RESET}
   1. Fetches the PR branch from GitHub (isolated git worktree)
-  2. Scans changed files against all rules in the instructions file
-  3. Runs GitHub Copilot AI for deeper narrative analysis
-  4. Generates a Markdown report with severity-grouped findings
+  2. Optionally fetches Jira story/defect context (summary, ACs, attachments)
+  3. Scans changed files against all rules in the instructions file
+  4. Runs GitHub Copilot AI for deeper narrative analysis (Jira-aware if context provided)
+  5. Generates a Markdown report with severity-grouped findings + Jira context section
 
   Option 7 — Manage Repositories:
     Add / remove / switch active repo (pas-ou, pas-4u, etc.)
+
+  Option 8 — Configure Jira Integration:
+    Set JIRA_BASE_URL, JIRA_USER_EMAIL, JIRA_TOKEN for automatic story/defect fetch
 
 ${BOLD}REQUIREMENTS${RESET}
   - git (2.5+)
@@ -369,12 +380,13 @@ main() {
             5) view_past_reports ;;
             6) cleanup_checkouts ;;
             7) configure_repos_menu ;;
+            8) jira_setup_wizard ;;
             0|q|Q|exit|quit)
                 echo -e "\n  ${DIM}Goodbye!${RESET}\n"
                 exit 0
                 ;;
             *)
-                print_warn "Invalid choice '${MENU_CHOICE}'. Enter a number 0-7."
+                print_warn "Invalid choice '${MENU_CHOICE}'. Enter a number 0-8."
                 ;;
         esac
         echo ""
