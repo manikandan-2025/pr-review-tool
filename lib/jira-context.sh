@@ -49,17 +49,37 @@ _jira_api_version() {
 }
 
 # ---------------------------------------------------------------------------
-# Internal: Persist a config value to settings.conf
+# Internal: Persist a config value to the appropriate file
+#   Sensitive keys → config/secrets.conf (gitignored, chmod 600)
+#   Non-sensitive  → config/settings.conf
 # ---------------------------------------------------------------------------
 _jira_save_setting() {
     local key="$1" value="$2"
     local settings_file="${TOOL_DIR}/config/settings.conf"
+    local secrets_file="${TOOL_DIR}/config/secrets.conf"
 
-    if grep -q "^${key}=" "$settings_file" 2>/dev/null; then
-        sed -i "s|^${key}=.*|${key}=\"${value}\"|" "$settings_file"
+    # Route sensitive credentials to the gitignored secrets file
+    local target_file
+    case "$key" in
+        JIRA_TOKEN|JIRA_PAT|JIRA_USER_EMAIL)
+            target_file="$secrets_file"
+            # Create secrets.conf from example if it doesn't exist yet
+            if [[ ! -f "$secrets_file" ]]; then
+                cp "${TOOL_DIR}/config/secrets.conf.example" "$secrets_file" 2>/dev/null \
+                    || touch "$secrets_file"
+            fi
+            chmod 600 "$secrets_file"
+            ;;
+        *)
+            target_file="$settings_file"
+            ;;
+    esac
+
+    if grep -q "^${key}=" "$target_file" 2>/dev/null; then
+        sed -i "s|^${key}=.*|${key}=\"${value}\"|" "$target_file"
     else
-        echo "" >> "$settings_file"
-        echo "${key}=\"${value}\"" >> "$settings_file"
+        echo "" >> "$target_file"
+        echo "${key}=\"${value}\"" >> "$target_file"
     fi
 }
 

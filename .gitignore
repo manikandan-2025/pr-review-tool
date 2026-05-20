@@ -2,6 +2,9 @@
 checkouts/
 reports/
 
+# Sensitive credentials — NEVER commit this file
+config/secrets.conf
+
 # OS files
 .DS_Store
 Thumbs.db

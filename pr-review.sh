@@ -19,6 +19,11 @@ TOOL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=config/settings.conf
 source "${TOOL_DIR}/config/settings.conf"
 
+# Load secrets (gitignored, chmod 600) — created by menu option 8 or manually
+if [[ -f "${TOOL_DIR}/config/secrets.conf" ]]; then
+    source "${TOOL_DIR}/config/secrets.conf"
+fi
+
 # Load libraries
 # shellcheck source=lib/utils.sh
 source "${TOOL_DIR}/lib/utils.sh"
@@ -56,6 +61,34 @@ preflight_checks() {
     if ! gh auth status &>/dev/null; then
         print_error "GitHub CLI is not authenticated. Run: gh auth login"
         exit 1
+    fi
+
+    # ── Credential safety checks ─────────────────────────────────────────────
+    local secrets_file="${TOOL_DIR}/config/secrets.conf"
+
+    # Warn if secrets.conf is tracked by git (should never happen due to .gitignore)
+    if git -C "$TOOL_DIR" ls-files --error-unmatch "$secrets_file" &>/dev/null 2>&1; then
+        print_error "SECURITY: config/secrets.conf is tracked by git!"
+        print_error "Your credentials may be exposed in git history."
+        print_info  "Fix: git rm --cached config/secrets.conf && git commit -m 'remove secrets'"
+    fi
+
+    # Warn if secrets.conf permissions are too open
+    if [[ -f "$secrets_file" ]]; then
+        local perms
+        perms=$(stat -c "%a" "$secrets_file" 2>/dev/null || stat -f "%A" "$secrets_file" 2>/dev/null)
+        if [[ "$perms" != "600" && "$perms" != "400" ]]; then
+            print_warn "config/secrets.conf permissions are ${perms} — should be 600."
+            print_info "Fix: chmod 600 ${secrets_file}"
+            chmod 600 "$secrets_file" && print_success "Auto-fixed permissions to 600."
+        fi
+    fi
+
+    # Warn if any raw credentials exist in settings.conf
+    if grep -qE '^(JIRA_TOKEN|JIRA_PAT|JIRA_USER_EMAIL)="[^"$][^"]{3,}"' \
+            "${TOOL_DIR}/config/settings.conf" 2>/dev/null; then
+        print_error "SECURITY: Real credentials found in config/settings.conf (git-tracked)!"
+        print_info  "Move them to config/secrets.conf: run menu option 8 to reconfigure."
     fi
 
     ensure_dirs
