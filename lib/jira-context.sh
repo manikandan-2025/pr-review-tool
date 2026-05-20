@@ -381,17 +381,18 @@ PY
 }
 
 # ---------------------------------------------------------------------------
-# Main entry point: ensure credentials exist, ask for issue key, fetch & return
-# context as a formatted string (stdout).  All UI goes to stderr.
+# Main entry point: ensure credentials exist, ask for issue key, fetch & store
+# result in global JIRA_CONTEXT_RESULT (call directly — do NOT use $(...))
 # ---------------------------------------------------------------------------
 gather_jira_context() {
-    echo "" >&2
-    print_step "Jira Story / Defect Context" >&2
-    print_info "Fetch Jira details so Copilot can verify the PR matches its requirements." >&2
-    echo "" >&2
+    JIRA_CONTEXT_RESULT=""   # reset global output variable
+
+    echo ""
+    print_step "Jira Story / Defect Context"
+    print_info "Fetch Jira details so Copilot can verify the PR matches its requirements."
+    echo ""
 
     if ! confirm_prompt "Fetch Jira context for this review?" "n"; then
-        echo ""
         return 0
     fi
 
@@ -406,12 +407,11 @@ gather_jira_context() {
     fi
 
     if [[ "$needs_setup" == "true" ]]; then
-        print_warn "Jira credentials not configured." >&2
+        print_warn "Jira credentials not configured."
         if confirm_prompt "Run Jira setup wizard now?" "y"; then
-            jira_setup_wizard || { echo ""; return 0; }
+            jira_setup_wizard || return 0
         else
-            print_info "Tip: configure Jira via menu option 8 or set JIRA_* vars in config/settings.conf" >&2
-            echo ""
+            print_info "Tip: configure Jira via menu option 8 or set JIRA_* vars in config/settings.conf"
             return 0
         fi
     fi
@@ -420,27 +420,23 @@ gather_jira_context() {
     issue_key=$(prompt_input "Jira issue key (e.g. PAS-1234)")
 
     if [[ -z "$issue_key" ]]; then
-        print_info "No issue key entered — skipping Jira context." >&2
-        echo ""
+        print_info "No issue key entered — skipping Jira context."
         return 0
     fi
 
     if [[ ! "$issue_key" =~ ^[A-Za-z][A-Za-z0-9]*-[0-9]+$ ]]; then
-        print_warn "Key '${issue_key}' doesn't look like a valid Jira key (expected format: ABC-123)." >&2
+        print_warn "Key '${issue_key}' doesn't look like a valid Jira key (expected format: ABC-123)."
         if ! confirm_prompt "Continue anyway?" "n"; then
-            echo ""
             return 0
         fi
     fi
 
     local context_text
     context_text=$(fetch_jira_issue "$issue_key") || {
-        print_warn "Could not fetch Jira issue. The review will proceed without Jira context." >&2
-        echo ""
+        print_warn "Could not fetch Jira issue. The review will proceed without Jira context."
         return 0
     }
 
-    print_success "Jira context loaded for ${issue_key} — included in AI review prompt." >&2
-    echo ""
-    echo "$context_text"
+    print_success "Jira context loaded for ${issue_key} — included in AI review prompt."
+    JIRA_CONTEXT_RESULT="$context_text"
 }

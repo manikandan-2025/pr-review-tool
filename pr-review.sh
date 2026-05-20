@@ -132,8 +132,10 @@ review_pr_workflow() {
     echo ""
 
     # Step 2: Gather Jira story / defect context (optional)
-    local jira_context
-    jira_context=$(gather_jira_context)
+    # NOTE: called directly (not via $(...)) so interactive prompts are visible
+    JIRA_CONTEXT_RESULT=""
+    gather_jira_context
+    local jira_context="${JIRA_CONTEXT_RESULT:-}"
 
     # Step 3: Check for existing worktree BEFORE fetching
     # (git refuses to fetch into a branch checked out in a worktree)
