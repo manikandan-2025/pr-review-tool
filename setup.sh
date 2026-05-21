@@ -178,9 +178,14 @@ else
             echo "${alias}|${gh_repo}|${store_path}" >> "$REPOS_CONF"
             ok "Repo '${alias}' added to repos.conf"
 
-            # Set as active repo in settings.conf
-            sed -i "s|^ACTIVE_REPO=.*|ACTIVE_REPO=\"${alias}\"|" "${TOOL_DIR}/config/settings.conf"
-            ok "Active repo set to '${alias}'"
+            # Set as active repo in settings.local.conf (gitignored per-user file)
+            LOCAL_SETTINGS="${TOOL_DIR}/config/settings.local.conf"
+            if [[ -f "$LOCAL_SETTINGS" ]]; then
+                sed -i "s|^ACTIVE_REPO=.*|ACTIVE_REPO=\"${alias}\"|" "$LOCAL_SETTINGS"
+            else
+                echo "ACTIVE_REPO=\"${alias}\"" > "$LOCAL_SETTINGS"
+            fi
+            ok "Active repo set to '${alias}' (saved to settings.local.conf)"
 
             if [[ ! -d "$local_path" ]]; then
                 warn "Directory ${local_path} does not exist — clone it first:"

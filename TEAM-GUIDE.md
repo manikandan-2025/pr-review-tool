@@ -535,7 +535,7 @@ Add, remove, switch, or update the local path for any registered repository — 
   ✔  Switched to: pas-4u  (dedalus-cis4u/pas-4u-ci)
 ```
 
-All future reviews in this session will now target `pas-4u`. The setting is persisted to `config/settings.conf`.
+All future reviews in this session will now target `pas-4u`. The setting is persisted to `config/settings.local.conf` (gitignored — your personal preference).
 
 ---
 
@@ -921,18 +921,22 @@ This section is important for everyone — especially anyone who handles the Jir
 | **GitHub token** | `gh auth login` (managed by GitHub CLI) | GitHub CLI's secure keyring — NOT in this repo |
 | **Jira PAT** | Generated at your Jira profile page | `config/secrets.conf` — gitignored, chmod 600 |
 
-### The `secrets.conf` file
+### The `secrets.conf` and gitignored config files
 
 ```
 config/
-├── settings.conf       ← Safe to commit — only URLs, versions, non-sensitive settings
-├── secrets.conf        ← NEVER commit — contains your JIRA_PAT (gitignored, chmod 600)
-└── secrets.conf.example ← Safe to commit — blank template for new team members
+├── settings.conf         ← Safe to commit — team-wide URLs, versions, scan settings
+├── settings.local.conf   ← NEVER commit — your ACTIVE_REPO preference (gitignored)
+├── repos.conf            ← NEVER commit — your local clone paths (gitignored)
+├── repos.conf.example    ← Safe to commit — blank template for new team members
+├── secrets.conf          ← NEVER commit — contains your JIRA_PAT (gitignored, chmod 600)
+└── secrets.conf.example  ← Safe to commit — blank template for new team members
 ```
 
-Key protections on `secrets.conf`:
-- Listed in `.gitignore` — git will not track it
-- Created with `chmod 600` — only your user account can read it
+Key protections:
+- All three personal files are in `.gitignore` — git will not track them
+- `secrets.conf` is created with `chmod 600` — only your user account can read it
+- `settings.local.conf` and `repos.conf` stay on your machine only
 - **Pre-commit hook** — the tool installs a `.git/hooks/pre-commit` that scans staged files for credential patterns and blocks the commit if any are found
 
 ### What to do if you accidentally commit a credential
@@ -1099,7 +1103,7 @@ cd ~/pas-project/pas-ou && git worktree prune
 | **Jira PAT** | Personal Access Token for Jira — generated at your Jira profile page. Used to authenticate API calls. Stored in `secrets.conf` only. |
 | **`secrets.conf`** | A local-only file (`config/secrets.conf`) that holds your Jira PAT. It is gitignored and `chmod 600` — never committed to git. |
 | **`repos.conf`** | The repository registry file (`config/repos.conf`) — maps aliases to GitHub repo names and local clone paths. |
-| **active repo** | The repository currently targeted by the tool, set via `ACTIVE_REPO` in `settings.conf` or by using **Option 7**. |
+| **active repo** | The repository currently targeted by the tool, set via `ACTIVE_REPO`. Your preference is saved to `config/settings.local.conf` (gitignored) and can be changed via **Option 7**. |
 
 ---
 

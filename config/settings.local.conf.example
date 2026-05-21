@@ -1,0 +1,9 @@
+# settings.local.conf — per-user settings (gitignored)
+#
+# This file is created automatically when you switch repos via Option 7.
+# Copy this to config/settings.local.conf if you want to set it manually.
+#
+# Overrides settings.conf for your machine only.
+# Safe: this file is in .gitignore and will NEVER be committed.
+
+ACTIVE_REPO="pas-ou"

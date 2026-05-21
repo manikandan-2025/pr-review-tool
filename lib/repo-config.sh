@@ -16,6 +16,23 @@ _is_valid_repo_alias() {
     [[ "$1" =~ ^[A-Za-z0-9._-]+$ ]]
 }
 
+# Persist ACTIVE_REPO to settings.local.conf (gitignored, per-user).
+# settings.conf is team-wide and must not contain user-specific state.
+_save_active_repo() {
+    local alias="$1"
+    local local_conf="${TOOL_DIR}/config/settings.local.conf"
+    if [[ -f "$local_conf" ]]; then
+        if grep -q "^ACTIVE_REPO=" "$local_conf"; then
+            sed -i "s|^ACTIVE_REPO=.*|ACTIVE_REPO=\"${alias}\"|" "$local_conf"
+        else
+            echo "ACTIVE_REPO=\"${alias}\"" >> "$local_conf"
+        fi
+    else
+        echo "# Per-user settings — gitignored, stays on your machine only" > "$local_conf"
+        echo "ACTIVE_REPO=\"${alias}\"" >> "$local_conf"
+    fi
+}
+
 # Expand ~ or $HOME at the start of a path
 _expand_path() {
     local p="$1"
@@ -132,7 +149,7 @@ list_repos() {
 }
 
 # ---------------------------------------------------------------------------
-# switch_repo — interactively pick a new active repo, persist to settings.conf
+# switch_repo — interactively pick a new active repo, persist to settings.local.conf
 # ---------------------------------------------------------------------------
 switch_repo() {
     print_header "Switch Active Repository"
@@ -172,9 +189,8 @@ switch_repo() {
         return 0
     fi
 
-    # Update settings.conf
-    local conf="${TOOL_DIR}/config/settings.conf"
-    sed -i "s|^ACTIVE_REPO=.*|ACTIVE_REPO=\"${new_alias}\"|" "$conf"
+    # Persist to settings.local.conf (per-user, gitignored)
+    _save_active_repo "$new_alias"
     ACTIVE_REPO="$new_alias"
     REPO_PATH="${_REPO_PATHS[$idx]}"
     GITHUB_REPO="${_REPO_GH[$idx]}"
@@ -227,8 +243,7 @@ add_repo() {
     print_success "Repo '${repo_alias}' added to repos.conf"
 
     if confirm_prompt "Switch to '${repo_alias}' now?"; then
-        local conf="${TOOL_DIR}/config/settings.conf"
-        sed -i "s|^ACTIVE_REPO=.*|ACTIVE_REPO=\"${repo_alias}\"|" "$conf"
+        _save_active_repo "$repo_alias"
         ACTIVE_REPO="$repo_alias"
         REPO_PATH="$expanded_path"
         GITHUB_REPO="$gh_repo"
@@ -275,8 +290,7 @@ remove_repo() {
     if [[ "$alias_to_remove" == "$ACTIVE_REPO" ]]; then
         _load_repos_file
         if [[ ${#_REPO_ALIASES[@]} -gt 0 ]]; then
-            local conf="${TOOL_DIR}/config/settings.conf"
-            sed -i "s|^ACTIVE_REPO=.*|ACTIVE_REPO=\"${_REPO_ALIASES[0]}\"|" "$conf"
+            _save_active_repo "${_REPO_ALIASES[0]}"
             ACTIVE_REPO="${_REPO_ALIASES[0]}"
             REPO_PATH="${_REPO_PATHS[0]}"
             GITHUB_REPO="${_REPO_GH[0]}"

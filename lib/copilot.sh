@@ -48,7 +48,7 @@ ${file_diff}
 > Note: ${remaining} additional files not shown due to size limits."
 
     cat <<PROMPT
-You are a senior Angular developer performing a code review for the \`dedalus-cis4u/pas-ou\` repository.
+You are a senior developer performing a code review for the \`${GITHUB_REPO}\` repository.
 
 ## Pull Request Details
 - **PR**: #${pr_number}

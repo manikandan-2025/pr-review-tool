@@ -348,7 +348,8 @@ pr-review-tool/
 ├── config/
 │   ├── repos.conf                ← 🔒 Your repo registry (gitignored — per-machine)
 │   ├── repos.conf.example        ← Template — auto-copied on first run
-│   ├── settings.conf             ← General settings (active repo, behaviour)
+│   ├── settings.conf             ← Team-wide settings (URL, scan extensions, base branch)
+│   ├── settings.local.conf       ← 🔒 Your personal settings (active repo — gitignored)
 │   ├── secrets.conf              ← 🔒 Your JIRA_PAT (gitignored, chmod 600)
 │   └── secrets.conf.example      ← Template — copy to secrets.conf to get started
 │
@@ -379,8 +380,10 @@ This tool handles two types of credentials: your **GitHub token** (managed by `g
 |------|--------|
 | `config/secrets.conf` is **gitignored** | It will never be committed, even by accident |
 | `config/secrets.conf` is **chmod 600** | Only your user account can read it |
+| `config/repos.conf` is **gitignored** | Your local clone paths stay on your machine |
+| `config/settings.local.conf` is **gitignored** | Your active repo preference stays on your machine |
 | **Pre-commit hook** blocks leaks | If a real credential pattern is detected in a staged file, the commit is rejected |
-| `config/settings.conf` is **clean** | Only non-sensitive settings (URL, API version) live here |
+| `config/settings.conf` is **clean** | Only non-sensitive, team-wide settings live here |
 
 **If you accidentally expose your Jira PAT:**
 1. Go to `<jira-url>/secure/ViewProfile.jspa` → Personal Access Tokens

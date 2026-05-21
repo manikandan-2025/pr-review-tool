@@ -206,7 +206,7 @@ list_instruction_files() {
         "$INSTRUCTIONS_FILE"
         "${REPO_PATH}/.github/instructions/"
         "${REPO_PATH}/.github/"
-        "/home/orbisu/pas-project/"
+        "${TOOL_DIR}/"
     )
 
     local found=0

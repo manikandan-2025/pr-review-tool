@@ -19,6 +19,12 @@ TOOL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=config/settings.conf
 source "${TOOL_DIR}/config/settings.conf"
 
+# Load per-user local overrides (gitignored) — overrides ACTIVE_REPO and any
+# other setting the user wants to customise without touching shared settings.conf
+if [[ -f "${TOOL_DIR}/config/settings.local.conf" ]]; then
+    source "${TOOL_DIR}/config/settings.local.conf"
+fi
+
 # Load secrets (gitignored, chmod 600) — created by menu option 8 or manually
 if [[ -f "${TOOL_DIR}/config/secrets.conf" ]]; then
     source "${TOOL_DIR}/config/secrets.conf"

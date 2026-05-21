@@ -5,6 +5,12 @@ reports/
 # Sensitive credentials — NEVER commit this file
 config/secrets.conf
 
+# Per-user settings (ACTIVE_REPO preference etc.) — stays on your machine only
+config/settings.local.conf
+
+# Per-user repo registry (local clone paths) — stays on your machine only
+config/repos.conf
+
 # OS files
 .DS_Store
 Thumbs.db
@@ -14,4 +20,3 @@ Thumbs.db
 *.swo
 .vscode/
 .idea/
-config/repos.conf
