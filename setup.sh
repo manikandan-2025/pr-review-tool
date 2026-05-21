@@ -89,10 +89,10 @@ https://cli.github.com/packages stable main" \
             sudo apt-get update -q && sudo apt-get install -y gh
         ) && ok "gh installed via apt." || fail "apt install failed. See: https://cli.github.com/"
     elif [[ -f /etc/redhat-release ]]; then
-        # RHEL / Fedora / CentOS
+        # RHEL / Fedora / CentOS (supports both DNF4 and DNF5)
         info "Installing via dnf (requires sudo)..."
-        sudo dnf install -y 'dnf-command(config-manager)' 2>/dev/null || true
-        sudo dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
+        sudo curl -fsSL https://cli.github.com/packages/rpm/gh-cli.repo \
+            -o /etc/yum.repos.d/gh-cli.repo
         sudo dnf install -y gh && ok "gh installed via dnf." || fail "dnf install failed."
     else
         fail "Unknown OS. Install gh manually from: https://cli.github.com/"
