@@ -173,6 +173,15 @@ else
         local_path="${local_path/#\~/$HOME}"
 
         if [[ -n "$alias" && -n "$gh_repo" && -n "$local_path" ]]; then
+            # Validate alias (alphanumeric, dash, underscore only)
+            if [[ ! "$alias" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+                warn "Alias contains unsafe characters — sanitizing."
+                alias=$(printf '%s' "$alias" | tr -cd 'a-zA-Z0-9_-')
+            fi
+            # Validate gh_repo format (owner/repo)
+            if [[ ! "$gh_repo" =~ ^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+$ ]]; then
+                warn "GitHub repo '${gh_repo}' does not match expected owner/repo format."
+            fi
             # Store with ~ if under $HOME for portability
             store_path="${local_path/$HOME/~}"
             echo "${alias}|${gh_repo}|${store_path}" >> "$REPOS_CONF"
