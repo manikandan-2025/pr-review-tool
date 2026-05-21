@@ -151,10 +151,7 @@ review_pr_workflow() {
     # Step 1: Fetch PR metadata
     print_step "Fetching PR metadata from GitHub..."
     local metadata
-    metadata=$(fetch_pr_metadata "$pr_number") || {
-        print_error "Failed to fetch PR #${pr_number} metadata. Check the PR number and your gh auth."
-        return 1
-    }
+    metadata=$(fetch_pr_metadata "$pr_number") || return 1
 
     local pr_title pr_author pr_base pr_state pr_created
     pr_title=$(echo "$metadata"   | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['title'])" 2>/dev/null || echo "PR #${pr_number}")
