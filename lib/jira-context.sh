@@ -45,12 +45,32 @@ _jira_save_setting() {
             ;;
     esac
 
-    if grep -q "^${key}=" "$target_file" 2>/dev/null; then
-        sed -i "s|^${key}=.*|${key}=\"${value}\"|" "$target_file"
-    else
-        echo "" >> "$target_file"
-        echo "${key}=\"${value}\"" >> "$target_file"
+    # Reject values containing newlines — they would corrupt the sourced config file
+    if printf '%s' "$value" | grep -q $'\n'; then
+        print_error "Config value for ${key} contains a newline — rejected."
+        return 1
     fi
+
+    # Use Python to write safely — avoids sed delimiter injection and shell expansion
+    # when the config file is later sourced
+    python3 - "$target_file" "$key" "$value" <<'PY'
+import sys, re
+target_file, key, value = sys.argv[1], sys.argv[2], sys.argv[3]
+safe_val = "'" + value.replace("'", "'\\''" ) + "'"
+new_line = f"{key}={safe_val}"
+try:
+    with open(target_file, "r") as f:
+        content = f.read()
+except FileNotFoundError:
+    content = ""
+pattern = rf"^{re.escape(key)}=.*$"
+if re.search(pattern, content, re.MULTILINE):
+    content = re.sub(pattern, new_line, content, flags=re.MULTILINE)
+else:
+    content = content.rstrip("\n") + "\n\n" + new_line + "\n"
+with open(target_file, "w") as f:
+    f.write(content)
+PY
 }
 
 # ---------------------------------------------------------------------------
@@ -90,11 +110,15 @@ jira_setup_wizard() {
 
     # ── Connectivity test ─────────────────────────────────────────────────────
     print_info "Testing Jira connection..."
-    local test_response display_name
+    local test_response display_name _ccfg
+    _ccfg=$(mktemp "${TOOL_DIR}/.curl-cfg.XXXXXX")
+    chmod 600 "$_ccfg"
+    printf 'header = "Authorization: Bearer %s"\n' "$pat" > "$_ccfg"
     test_response=$(curl -s --max-time 10 \
-        -H "Authorization: Bearer ${pat}" \
+        -K "$_ccfg" \
         -H "Accept: application/json" \
         "${base_url}/rest/api/${api_version}/myself" 2>/dev/null) || true
+    rm -f "$_ccfg"
 
     display_name=$(echo "$test_response" | python3 -c \
         "import sys,json; d=json.load(sys.stdin); print(d.get('displayName') or d.get('name',''))" \
@@ -145,12 +169,16 @@ fetch_jira_issue() {
     print_info "Fetching ${issue_key} from Jira (API v${api_version})..." >&2
     start_spinner "Contacting Jira API..." >&2
 
-    local response http_code
+    local response http_code _ccfg
+    _ccfg=$(mktemp "${TOOL_DIR}/.curl-cfg.XXXXXX")
+    chmod 600 "$_ccfg"
+    printf 'header = "Authorization: Bearer %s"\n' "${JIRA_PAT}" > "$_ccfg"
     response=$(curl -s --max-time 15 \
         -w "\n__HTTP_CODE__:%{http_code}" \
-        -H "Authorization: Bearer ${JIRA_PAT}" \
+        -K "$_ccfg" \
         -H "Accept: application/json" \
         "${JIRA_BASE_URL}/rest/api/${api_version}/issue/${issue_key}?fields=${fields}" 2>/dev/null)
+    rm -f "$_ccfg"
     stop_spinner >&2
 
     http_code=$(echo "$response" | grep -o '__HTTP_CODE__:[0-9]*' | cut -d: -f2)
