@@ -118,10 +118,9 @@ run_copilot_analysis() {
     local exit_code=0
 
     start_spinner "Asking Copilot to review the diff..."
-    # --available-tools (no args) = no tools; --no-ask-user = fully non-interactive
-    # Filter: remove token stats footer and tool-invocation log lines (●, │, └)
-    copilot_output=$(timeout 120 gh copilot -p "$prompt" --available-tools --no-ask-user 2>&1 \
-        | grep -v "^Changes\s*\|^Requests\s*\|^Tokens\s*" \
+    # Use -- to prevent gh from intercepting Copilot's own flags (-p, --no-ask-user, etc.)
+    # -s = silent (no stats footer); -p = non-interactive prompt mode
+    copilot_output=$(timeout 120 gh copilot -- -p "$prompt" --available-tools --no-ask-user -s 2>&1 \
         | grep -v "^[[:space:]]*[●│└]") || exit_code=$?
     stop_spinner
 
