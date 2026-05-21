@@ -167,26 +167,21 @@ RULE_ENTRY
         table_line=$(grep -n "^| ${rule_id}" "$INSTRUCTIONS_FILE" 2>/dev/null | tail -1 | cut -d: -f1)
         if [[ -z "$table_line" ]]; then
             # Find the right table and append
-            python3 - <<PY 2>/dev/null || true
+            python3 - "$INSTRUCTIONS_FILE" "$rule_id" "$severity" "$description" <<'PY' 2>/dev/null || true
 import re, sys
+instructions_file, rule_id, severity, description = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 
-with open("$INSTRUCTIONS_FILE", "r") as f:
+with open(instructions_file, "r") as f:
     content = f.read()
 
-# Find the section with the matching header
-section_pattern = r"(##.*${section_header}.*\n(?:.*\n)*?)"
-# Simple append to the last matching table row
-table_row = f"| ${rule_id} | ${severity} | ${description} |"
-
-# Find last table row for this category prefix
-category = "${rule_id}".split("-")[0]
-# Find a table that already has this category prefix
+table_row = f"| {rule_id} | {severity} | {description} |"
+category = rule_id.split("-")[0]
 pattern = r"(\| " + category + r"-\d+ \|[^\n]+\n)(?=\| " + category + r"-|\n|\Z)"
 matches = list(re.finditer(pattern, content))
 if matches:
     last = matches[-1]
     content = content[:last.end()] + table_row + "\n" + content[last.end():]
-    with open("$INSTRUCTIONS_FILE", "w") as f:
+    with open(instructions_file, "w") as f:
         f.write(content)
 PY
         fi
@@ -238,8 +233,21 @@ list_instruction_files() {
         new_path=$(prompt_input "Enter full path to the instructions file")
         if [[ -f "$new_path" ]]; then
             # Update settings.conf
-            sed -i "s|INSTRUCTIONS_FILE=.*|INSTRUCTIONS_FILE=\"${new_path}\"|" \
-                "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../config/settings.conf"
+            local _scfg
+            _scfg="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../config/settings.conf"
+            python3 - "$_scfg" "INSTRUCTIONS_FILE" "$new_path" <<'PY'
+import sys, re
+target_file, key, value = sys.argv[1], sys.argv[2], sys.argv[3]
+safe_val = "'" + value.replace("'", "'\\''" ) + "'"
+new_line = f"{key}={safe_val}"
+with open(target_file, "r") as f:
+    content = f.read()
+pattern = rf"^{re.escape(key)}=.*$"
+if re.search(pattern, content, re.MULTILINE):
+    content = re.sub(pattern, new_line, content, flags=re.MULTILINE)
+with open(target_file, "w") as f:
+    f.write(content)
+PY
             INSTRUCTIONS_FILE="$new_path"
             print_success "Active instructions file updated to: ${new_path}"
         else
