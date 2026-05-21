@@ -6,6 +6,37 @@
 # ---------------------------------------------------------------------------
 # Fetch PR head from GitHub and create a local branch
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Diagnose a git fetch failure and suggest a fix
+# ---------------------------------------------------------------------------
+_diagnose_git_fetch_error() {
+    local pr_number="$1"
+    local error_output="${2:-}"
+
+    if echo "$error_output" | grep -qi "couldn't find remote ref\|remote ref does not exist"; then
+        print_error "PR #${pr_number} does not exist or has already been deleted."
+        print_info  "Fix: Verify the PR number is correct."
+        print_info  "     List open PRs: gh pr list --repo ${GITHUB_REPO}"
+    elif echo "$error_output" | grep -qi "repository not found\|remote: not found"; then
+        print_error "Remote repository '${GITHUB_REPO}' not found."
+        print_info  "Fix: Check config/repos.conf — switch repo via menu option 7."
+    elif echo "$error_output" | grep -qi "authentication\|403\|permission denied\|could not read"; then
+        print_error "Authentication or permission error fetching PR #${pr_number}."
+        print_info  "Fix: Run:  gh auth login"
+        print_info  "     Then: gh auth status"
+    elif echo "$error_output" | grep -qi "network\|resolve\|connect\|timeout"; then
+        print_error "Network error while fetching PR #${pr_number}."
+        print_info  "Fix: Check your internet connection and try again."
+    elif [[ -n "$error_output" ]]; then
+        print_error "Failed to fetch PR #${pr_number}."
+        print_info  "Reason: ${error_output}"
+        print_info  "Fix: Run manually: cd ${REPO_PATH} && git fetch origin pull/${pr_number}/head:pr-${pr_number}"
+    else
+        print_error "Failed to fetch PR #${pr_number} (unknown error)."
+        print_info  "Fix: Run manually: cd ${REPO_PATH} && git fetch origin pull/${pr_number}/head:pr-${pr_number}"
+    fi
+}
+
 fetch_pr() {
     local pr_number="$1"
     local branch_name="pr-${pr_number}"
@@ -13,19 +44,20 @@ fetch_pr() {
     print_step "Fetching PR #${pr_number} from GitHub..."
     start_spinner "Fetching pull/${pr_number}/head..."
 
-    (cd "$REPO_PATH" && git fetch origin "pull/${pr_number}/head:${branch_name}" 2>&1)
+    local fetch_output
+    fetch_output=$(cd "$REPO_PATH" && git fetch origin "pull/${pr_number}/head:${branch_name}" 2>&1)
     local exit_code=$?
     stop_spinner
 
     if [[ $exit_code -ne 0 ]]; then
-        # Branch may already exist — try updating it
+        # Branch may already exist — try force-updating it
         print_warn "Branch ${branch_name} already exists, updating..."
-        (cd "$REPO_PATH" && git fetch origin "pull/${pr_number}/head:${branch_name}" --force 2>&1)
+        fetch_output=$(cd "$REPO_PATH" && git fetch origin "pull/${pr_number}/head:${branch_name}" --force 2>&1)
         exit_code=$?
     fi
 
     if [[ $exit_code -ne 0 ]]; then
-        print_error "Failed to fetch PR #${pr_number}. Check your network and gh auth."
+        _diagnose_git_fetch_error "$pr_number" "$fetch_output"
         return 1
     fi
 
@@ -204,11 +236,53 @@ list_checkouts() {
 }
 
 # ---------------------------------------------------------------------------
+# Diagnose a gh API failure and suggest a fix
+# ---------------------------------------------------------------------------
+_diagnose_api_fetch_error() {
+    local pr_number="$1"
+    local error_output="${2:-}"
+
+    if echo "$error_output" | grep -qi "404\|not found\|could not resolve"; then
+        print_error "PR #${pr_number} not found in '${GITHUB_REPO}'."
+        print_info  "Fix: Check the PR number is correct."
+        print_info  "     Active repo: ${GITHUB_REPO} — switch via menu option 7."
+    elif echo "$error_output" | grep -qi "401\|403\|unauthorized\|forbidden\|authentication"; then
+        print_error "Authentication failed — no access to '${GITHUB_REPO}'."
+        print_info  "Fix: Run:  gh auth login"
+        print_info  "     Then: gh auth status"
+    elif echo "$error_output" | grep -qi "network\|resolve\|connect\|timeout\|ssl"; then
+        print_error "Network error while contacting GitHub API."
+        print_info  "Fix: Check your internet connection and try again."
+    elif ! command -v gh &>/dev/null; then
+        print_error "gh CLI not found."
+        print_info  "Fix: Run ./setup.sh to install it."
+    elif [[ -n "$error_output" ]]; then
+        print_error "Unexpected GitHub API error for PR #${pr_number}."
+        print_info  "Reason: ${error_output}"
+        print_info  "Fix: Run: gh api repos/${GITHUB_REPO}/pulls/${pr_number}"
+    else
+        print_error "Empty response for PR #${pr_number} — it may not exist."
+        print_info  "Fix: Verify: gh pr view ${pr_number} --repo ${GITHUB_REPO}"
+    fi
+}
+
+# ---------------------------------------------------------------------------
 # Fetch PR metadata from GitHub API
 # ---------------------------------------------------------------------------
 fetch_pr_metadata() {
     local pr_number="$1"
-    gh api "repos/${GITHUB_REPO}/pulls/${pr_number}" \
+    local api_output api_err
+
+    api_output=$(gh api "repos/${GITHUB_REPO}/pulls/${pr_number}" \
         --jq '{title: .title, author: .user.login, base: .base.ref, state: .state, created_at: .created_at, body: .body}' \
-        2>/dev/null
+        2>/tmp/_pr_fetch_err_$$)
+    local exit_code=$?
+    api_err=$(cat /tmp/_pr_fetch_err_$$ 2>/dev/null); rm -f /tmp/_pr_fetch_err_$$
+
+    if [[ $exit_code -ne 0 || -z "$api_output" ]]; then
+        _diagnose_api_fetch_error "$pr_number" "$api_err"
+        return 1
+    fi
+
+    echo "$api_output"
 }
