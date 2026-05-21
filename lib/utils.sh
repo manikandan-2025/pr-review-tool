@@ -140,5 +140,5 @@ severity_emoji() {
 
 # Ensure required dirs exist
 ensure_dirs() {
-    mkdir -p "$REPORTS_DIR" "$CHECKOUTS_DIR"
+    install -d -m 700 "$REPORTS_DIR" "$CHECKOUTS_DIR"
 }
