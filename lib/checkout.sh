@@ -200,7 +200,14 @@ remove_worktree() {
     fi
 
     print_step "Removing worktree for PR #${pr_number}..."
-    (cd "$REPO_PATH" && git worktree remove "$worktree_path" --force 2>&1) || rm -rf "$worktree_path"
+    if ! (cd "$REPO_PATH" && git worktree remove "$worktree_path" --force 2>&1); then
+        if [[ "$worktree_path" == "${CHECKOUTS_DIR}/pr-"* ]]; then
+            rm -rf "$worktree_path"
+        else
+            print_error "Refusing to delete path outside checkouts dir: ${worktree_path}"
+            return 1
+        fi
+    fi
     (cd "$REPO_PATH" && git worktree prune 2>/dev/null) || true
 
     if confirm_prompt "Also delete local branch '${branch_name}'?"; then
@@ -273,11 +280,13 @@ fetch_pr_metadata() {
     local pr_number="$1"
     local api_output api_err
 
+    local _err_file
+    _err_file=$(mktemp "${TOOL_DIR}/.pr-api-err.XXXXXX")
     api_output=$(gh api "repos/${GITHUB_REPO}/pulls/${pr_number}" \
         --jq '{title: .title, author: .user.login, base: .base.ref, state: .state, created_at: .created_at, body: .body}' \
-        2>/tmp/_pr_fetch_err_$$)
+        2>"$_err_file")
     local exit_code=$?
-    api_err=$(cat /tmp/_pr_fetch_err_$$ 2>/dev/null); rm -f /tmp/_pr_fetch_err_$$
+    api_err=$(cat "$_err_file" 2>/dev/null); rm -f "$_err_file"
 
     if [[ $exit_code -ne 0 || -z "$api_output" ]]; then
         _diagnose_api_fetch_error "$pr_number" "$api_err"
