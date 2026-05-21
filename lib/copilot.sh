@@ -108,10 +108,15 @@ run_copilot_analysis() {
 
     print_step "Running GitHub Copilot AI analysis..." >&2
 
-    # Write prompt to a temp file
+    # Write prompt to a private temp file (contains code diffs + Jira data)
     local prompt_file
-    prompt_file=$(mktemp /tmp/pr-review-prompt-XXXXXX.md)
-    echo "$prompt" > "$prompt_file"
+    local _old_umask_cp
+    _old_umask_cp=$(umask)
+    umask 077
+    mkdir -p "${TOOL_DIR}/.tmp"
+    prompt_file=$(mktemp "${TOOL_DIR}/.tmp/pr-review-prompt.XXXXXX")
+    printf '%s\n' "$prompt" > "$prompt_file"
+    umask "$_old_umask_cp"
 
     # Use gh copilot -p with the prompt passed directly
     local copilot_output
@@ -135,7 +140,7 @@ run_copilot_analysis() {
     fi
 
     # Save raw Copilot output
-    echo "$copilot_output" > "${output_file%.md}-copilot-raw.txt"
+    (umask 077; printf '%s\n' "$copilot_output" > "${output_file%.md}-copilot-raw.txt")
     print_success "Copilot analysis complete" >&2
     echo "$copilot_output"
 }
@@ -148,6 +153,9 @@ save_manual_prompt() {
     local report_path="$2"
     local prompt_file="${report_path%.md}-copilot-prompt.md"
 
+    local _old_umask_sp
+    _old_umask_sp=$(umask)
+    umask 077
     cat > "$prompt_file" <<EOF
 <!-- ================================================================
      GitHub Copilot Chat — Manual Review Prompt
@@ -157,6 +165,7 @@ save_manual_prompt() {
 
 ${prompt}
 EOF
+    umask "$_old_umask_sp"
     print_info "Prompt saved to: ${prompt_file}" >&2
     echo "$prompt_file"
 }
