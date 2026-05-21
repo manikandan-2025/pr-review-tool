@@ -329,8 +329,10 @@ cleanup_checkouts() {
                 remove_worktree "$pn"
             done
         fi
-    else
+    elif [[ "$pr_num" =~ ^[0-9]+$ ]]; then
         remove_worktree "$pr_num"
+    else
+        print_error "Invalid input '${pr_num}'. Enter a PR number (digits only) or 'all'."
     fi
 }
 
@@ -397,6 +399,10 @@ main() {
             exit 0
             ;;
         --pr)
+            if [[ -z "${2:-}" || ! "${2:-}" =~ ^[0-9]+$ ]]; then
+                echo "Error: --pr requires a valid PR number (digits only)." >&2
+                exit 1
+            fi
             preflight_checks
             show_banner
             review_pr_workflow "${2:-}"
