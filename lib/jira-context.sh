@@ -46,7 +46,7 @@ _jira_save_setting() {
     esac
 
     # Reject values containing newlines — they would corrupt the sourced config file
-    if printf '%s' "$value" | grep -q $'\n'; then
+    if [[ "$value" == *$'\n'* ]]; then
         print_error "Config value for ${key} contains a newline — rejected."
         return 1
     fi
